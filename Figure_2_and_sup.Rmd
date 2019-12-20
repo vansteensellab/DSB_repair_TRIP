@@ -2,7 +2,7 @@
 title: "Figure 2 and supplemental 1"
 author: "Ruben Schep"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
-output: 
+output:
   html_document:
     theme: journal #cerulean
     highlight: monochrome
@@ -31,7 +31,7 @@ pdf.options(useDingbats = FALSE)
 
 ```{r setup, message=FALSE, warnings=FALSE}
 # 6-digit Date tag:
-Date <- substr(gsub("-","",Sys.time()),3,8) 
+Date <- substr(gsub("-","",Sys.time()),3,8)
 
 # libraries:
 library(ggplot2)
@@ -122,19 +122,19 @@ clone5barcodes <- c("AGGGCGTAAAATATTT.B",
 ```{r preprocess experiments}
 trip_tib_mut <- copy(trip_tib_2000)
 trip_tib_2000 <- trip_tib_2000 %>% distinct(barcode, exp, .keep_all = TRUE)
-trip_lbr2_DMSO_tib <- trip_tib_2000 %>% 
+trip_lbr2_DMSO_tib <- trip_tib_2000 %>%
   filter(exp_pool=="indel_mean_LBR2_DMSO_64h")
 
-trip_tib <- trip_tib_2000 %>% 
+trip_tib <- trip_tib_2000 %>%
   filter(exp_pool %in% c("indel_mean_LBR2_DMSO_64h", "indel_mean_LBR2_0_64h"))
-trip_tib_mut <- trip_tib_mut_2000 %>% 
-  filter(exp_pool %in% c("indel_mean_LBR2_DMSO_64h", "indel_mean_LBR2_0_64h", "indel_mean_LBR2_NU7441_64h")) 
+trip_tib_mut <- trip_tib_mut_2000 %>%
+  filter(exp_pool %in% c("indel_mean_LBR2_DMSO_64h", "indel_mean_LBR2_0_64h", "indel_mean_LBR2_NU7441_64h"))
 
-trip_tib_mut_all <- trip_tib_mut_all_2000 %>% 
-  filter(exp_pool %in% c("indel_mean_LBR2_0_64h")) 
+trip_tib_mut_all <- trip_tib_mut_all_2000 %>%
+  filter(exp_pool %in% c("indel_mean_LBR2_0_64h"))
 
-mean_trip_tib_2000 <- trip_tib_2000 %>% 
-  gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>% 
+mean_trip_tib_2000 <- trip_tib_2000 %>%
+  gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>%
   distinct(barcode, exp, pathway, .keep_all = TRUE)
 
 mean_trip_tib_2000$pathway <- factor(mean_trip_tib_2000$pathway, levels=c("other_indels", "MMEJ", "NHEJ"))
@@ -166,7 +166,7 @@ mutationintegrations <- mutationintegrations %>% mutate(pool = ifelse(barcode %i
 
 
 # Figures
-## Main Figure 
+## Main Figure
 ### Panel A
 ```{r chromosome ideogram, fig.height=6, fig.width=8}
 ggplot() +
@@ -190,11 +190,11 @@ table(mutationintegrations$pool)
 ### Panel B
 ```{r indel spectra, fig.height=6, fig.width=12}
 # pdf(filename, width = 11, height = 5, useDingbats = F)
-ggplot(filter(trip_tib_mut, drug == "-", mutation != "ssODN"), 
-       aes(mutation, freq, color = color)) + 
-  geom_quasirandom() + 
-  theme_bw(base_size = 16) + 
-  ylim(0, 1) + 
+ggplot(filter(trip_tib_mut, drug == "-", mutation != "ssODN"),
+       aes(mutation, freq, color = color)) +
+  geom_quasirandom() +
+  theme_bw(base_size = 16) +
+  ylim(0, 1) +
   theme(legend.position = c(0.1, 0.8)) +
   scale_color_manual("legend", values = colory)
 ```
@@ -203,21 +203,21 @@ ggplot(filter(trip_tib_mut, drug == "-", mutation != "ssODN"),
 
 ### Panel C
 ```{r pathway contribution, fig.height=6, fig.width=10}
-pathway_distribution <- trip_tib %>% filter(exp_pool == "indel_mean_LBR2_0_64h") %>% 
+pathway_distribution <- trip_tib %>% filter(exp_pool == "indel_mean_LBR2_0_64h") %>%
   gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>% arrange(desc(ratios))
 barcode_order <- pathway_distribution %>% filter(pathway == "NHEJ")  %>% arrange(desc(ratios)) %>% select(barcode)
 
 pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
 pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
 
-ggplot(pathway_distribution, 
-       aes(barcode, ratios, width=1)) + 
-  geom_bar(stat = "identity", aes(fill = pathway)) + 
+ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
   theme_bw(base_size = 16) +
   theme(axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) +
   ylab("Pathway Contribution") +
-  scale_fill_manual("legend", values = colores) + 
+  scale_fill_manual("legend", values = colores) +
   ggtitle("Pathway contribution per barcode")
 ```
 #### Figure legend ####
@@ -245,6 +245,8 @@ table(mutationintegrations$mapping)
 
 ### Panel C
 ```{r clone5 heatmap, fig.height=6, fig.width=8}
+
+
 # Keeping the scale in the pheatmap function
 myBreaks1 <- seq(0,1,0.01)
 
@@ -255,19 +257,62 @@ chom_matrix <- trip_tib %>% filter(drug == "-", barcode %in% clone5barcodes) %>%
 pheatmap(chom_matrix,
          color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
          breaks = myBreaks1)
+
+
+
 ```
+
+<!-- start Christ -->
+
+```{r clone5 heatmap Christ, fig.height=6, fig.width=8}
+
+chip.dt = readRDS('../data/R/cl20191219_ChIP_zscore_selection_chipmentation.RDS')
+
+chip_clone5 = chip.dt[pool=='clone5',]
+
+clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2',
+                                    'H3K9me3', 'H3K27me3', 'EZH2', 'CTCF', 'SMC3',
+							        'HDAC3', 'HDAC2', 'HDAC1', 'H3K4me1',
+								    'H3K4me2', 'H3K4me3', 'H3K27ac',
+								    'H4K5acK8ac', 'H2AFZ', 'DNAse', 'Dam', 'm5C',
+								    'H3K79me2', 'TTseq', 'H3K36me3', 'POL2AS2',
+								    'POL2'),
+					   group=factor(c(rep('repressive', 6), rep('insulator', 2),
+				                      rep('HDAC', 3), rep('euchromatin', 6),
+                                      rep('accessibility', 2), 'methylation',
+						              rep('transcribing', 5)),
+									levels=c('transcribing', 'accessibility',
+                                             'methylation', 'euchromatin',
+								             'HDAC', 'insulator', 'repressive')))
+feature_fill = c(insulator="#a6b5a3", repressive="#304441", euchromatin="#cda4cc",
+                 transcribing="#ED9114", HDAC="#aac9e0", accessibility='#cebc85',
+                 methylation='#7dc98f')
+
+chom_df = t(chip_clone5[,-c('pool', 'binsize', 'ID')])
+colnames(chom_df) = chip_clone5$ID
+
+order_vec=rownames(clustering)[nrow(clustering):1]
+
+pheatmap(chom_df[order_vec,], cluster_rows=F, annotation_row=clustering,
+		 annotation_colors=list(group=feature_fill),
+         color = colorRampPalette(rev(brewer.pal(n = 11, name="RdBu")))(100))
+
+```
+
+<!-- end Christ -->
+
 #### Figure Legend
 
 
 ### Panel D
 ```{r all indels, fig.height=6, fig.width=12}
-ggplot(filter(trip_tib_mut_all, mutation != "ssODN"), 
-       aes(mutation, freq, color = color)) + 
-  geom_quasirandom() + 
-  theme_bw(base_size = 16) + 
-  ylim(0, 1) + 
+ggplot(filter(trip_tib_mut_all, mutation != "ssODN"),
+       aes(mutation, freq, color = color)) +
+  geom_quasirandom() +
+  theme_bw(base_size = 16) +
+  ylim(0, 1) +
   theme(legend.position = c(0.1, 0.6)) +
-  scale_x_discrete(breaks = seq(-115, 15, by = 5)) + 
+  scale_x_discrete(breaks = seq(-115, 15, by = 5)) +
   scale_color_manual("legend", values = colory)
 
 trip_tib_mut_all %>% filter(mutation != "ssODN") %>% group_by(mutation) %>% summarise(median = log10(median(freq))) %>%
@@ -275,7 +320,7 @@ trip_tib_mut_all %>% filter(mutation != "ssODN") %>% group_by(mutation) %>% summ
 
 trip_tib_mut_all %>% filter(mutation != "ssODN") %>% group_by(mutation) %>% summarise(mean_count = log10(mean(count))) %>%
   ggplot(., aes(mutation, fill = mean_count, width=1)) + geom_bar(stat = "count", ) + theme_bw(base_size = 16)
-  
+
 ```
 
 #### Figure legend ####
@@ -291,8 +336,8 @@ barcode_NU7441 <- Reduce(intersect, list(barcodes_DMSO,
 
 trip_tib_mut_filt <- trip_tib_mut_all_2000 %>% filter(barcode %in% barcode_NU7441) %>% filter(exp_pool %in% c("indel_mean_LBR2_DMSO_64h", "indel_mean_LBR2_NU7441_64h"))
 
-trip_mut_lbr2_NU7441_diff <- trip_tib_mut_filt  %>% 
-  select("barcode", "mutation", "freq", "exp_pool", "color") %>% 
+trip_mut_lbr2_NU7441_diff <- trip_tib_mut_filt  %>%
+  select("barcode", "mutation", "freq", "exp_pool", "color") %>%
   filter(barcode %in% barcode_NU7441) %>%  
   spread(exp_pool, freq) %>%
   filter(!is.na(indel_mean_LBR2_NU7441_64h), !is.na(indel_mean_LBR2_DMSO_64h)) %>%
@@ -303,18 +348,18 @@ mutations <- trip_mut_lbr2_NU7441_diff %>% group_by(mutation) %>% dplyr::summari
 
 trip_mut_lbr2_NU7441_diff %>% filter(mutation %in% mutations) %>%
   do(broom::tidy(t.test(freq ~ exp_pool, data = .))) %>%
-  ungroup() %>% 
-  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% 
+  ungroup() %>%
+  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
   select(mutation, p.value, p.adj) %>%
   arrange(p.adj)
 
-trip_tib_mut_filt <- trip_tib_mut_all_2000 %>% 
-  filter(mutation %in% c("-22", "-14", "-7", "1") & 
-           exp_pool %in% c("indel_mean_LBR2_DMSO_64h", 
+trip_tib_mut_filt <- trip_tib_mut_all_2000 %>%
+  filter(mutation %in% c("-22", "-14", "-7", "1") &
+           exp_pool %in% c("indel_mean_LBR2_DMSO_64h",
                            "indel_mean_LBR2_NU7441_64h")) %>%
   group_by(mutation, drug)
 
-ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug, alpha = 0.5)) + 
+ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug, alpha = 0.5)) +
   geom_quasirandom(dodge.width=1) +
   theme_bw(base_size = 16) +
   scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
@@ -325,21 +370,21 @@ ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug, alpha = 0.5)) +
 ### Panel F
 ```{r NU7441 in the pool, fig.height=6, fig.width=5}
 # DMSO samples
-LBR2.DMSO.64h.samples <- trip_tib_mut_all_2000 %>% filter(plasmid == "LBR2", 
-                                                          drug == "DMSO", 
-                                                          ssODN == "-", 
-                                                          siRNA == "-", 
-                                                          replicate != "mean", 
-                                                          time == 64) %>% 
+LBR2.DMSO.64h.samples <- trip_tib_mut_all_2000 %>% filter(plasmid == "LBR2",
+                                                          drug == "DMSO",
+                                                          ssODN == "-",
+                                                          siRNA == "-",
+                                                          replicate != "mean",
+                                                          time == 64) %>%
   pull(exp_pool) %>% unique()
 
 # NU7441 LBR2 sample
-LBR2.NU7441.64h.samples <- trip_tib_mut_all_2000 %>% filter(plasmid == "LBR2", 
-                                                            drug == "NU7441", 
-                                                            ssODN == "-", 
-                                                            siRNA == "-", 
-                                                            replicate != "mean", 
-                                                            time == 64) %>% 
+LBR2.NU7441.64h.samples <- trip_tib_mut_all_2000 %>% filter(plasmid == "LBR2",
+                                                            drug == "NU7441",
+                                                            ssODN == "-",
+                                                            siRNA == "-",
+                                                            replicate != "mean",
+                                                            time == 64) %>%
   pull(exp_pool) %>% unique()
 
 trip_tib_mut_all_2000
@@ -354,43 +399,43 @@ barcode_NU7441 <- Reduce(intersect, list(barcodes_DMSO,
 
 trip_tib_mut_filt <- trip_tib_mut_all_2000 %>% filter(barcode %in% barcode_NU7441) %>% filter(exp_pool %in% c(LBR2.DMSO.64h.samples, LBR2.NU7441.64h.samples))
 
-trip_mut_lbr2_NU7441_diff <- trip_tib_mut_filt  %>% 
-  select("barcode", "mutation", "freq", "exp_pool", "drug") %>% 
+trip_mut_lbr2_NU7441_diff <- trip_tib_mut_filt  %>%
+  select("barcode", "mutation", "freq", "exp_pool", "drug") %>%
   mutate(mutation = as.character(mutation)) %>% group_by(mutation, barcode)
 
-p.values.NU7441.mutations <- trip_mut_lbr2_NU7441_diff  %>% 
-  select(-exp_pool) %>%  # Remove exp_pool so it doesn't interfere. 
-  group_by(mutation, barcode, drug) %>% # I want to know how many times each mutation was picked up per barcode per condition 
-  dplyr::summarise(count = n()) %>% # Summary to count this 
+p.values.NU7441.mutations <- trip_mut_lbr2_NU7441_diff  %>%
+  select(-exp_pool) %>%  # Remove exp_pool so it doesn't interfere.
+  group_by(mutation, barcode, drug) %>% # I want to know how many times each mutation was picked up per barcode per condition
+  dplyr::summarise(count = n()) %>% # Summary to count this
   filter(drug == "NU7441" & count > 3 | drug == "DMSO" & count > 5) %>% # Select the barcodes that are present in all replicates.
-  group_by(mutation, barcode) %>% 
-  dplyr::summarise(count = n()) %>% 
+  group_by(mutation, barcode) %>%
+  dplyr::summarise(count = n()) %>%
   filter(count > 1) %>%
-  select(-count) %>% 
-  left_join(trip_mut_lbr2_NU7441_diff, by = c("barcode", "mutation")) %>% 
-  group_by(mutation, barcode) %>% 
-  select(-exp_pool) %>% 
+  select(-count) %>%
+  left_join(trip_mut_lbr2_NU7441_diff, by = c("barcode", "mutation")) %>%
+  group_by(mutation, barcode) %>%
+  select(-exp_pool) %>%
   do(broom::tidy(t.test(freq ~ drug, data = .))) %>%
-  ungroup() %>% 
-  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val. 
+  ungroup() %>%
+  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val.
   arrange(p.adj)
 
-p.values.NU7441.mutations %>% 
-  group_by(mutation) %>% 
+p.values.NU7441.mutations %>%
+  group_by(mutation) %>%
   dplyr::summarise(p.adj = median(p.adj),
             p.val = median(p.value)) %>%
   arrange(p.val)
 
 barcodes <- p.values.NU7441.mutations %>% pull(barcode) %>% unique()
 
-trip_tib_mut_filt <- trip_tib_mut_all_2000 %>% 
-  filter(exp_pool %in% c(LBR2.DMSO.64h.samples, LBR2.NU7441.64h.samples) & 
-           barcode %in% barcodes & 
-           mutation %in% c("-22", "-14", "-7", "1")) %>% 
-  group_by(mutation, exp_pool, drug) %>% 
+trip_tib_mut_filt <- trip_tib_mut_all_2000 %>%
+  filter(exp_pool %in% c(LBR2.DMSO.64h.samples, LBR2.NU7441.64h.samples) &
+           barcode %in% barcodes &
+           mutation %in% c("-22", "-14", "-7", "1")) %>%
+  group_by(mutation, exp_pool, drug) %>%
   dplyr::summarise(freq = median(freq))
 
-ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) + 
+ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
   geom_quasirandom(dodge.width=1) +
   theme_bw(base_size = 16) +
   scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
@@ -402,17 +447,17 @@ ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
 ```{r pathway contribution with siRNA, }
 siRNAexps <- trip_tib_2000 %>% filter(replicate %in% c('mean'), siRNA != "-") %>% pull(exp_pool) %>% unique()
 
-trip_lbr2_siRNA <- trip_tib_2000 %>% 
+trip_lbr2_siRNA <- trip_tib_2000 %>%
   filter(exp_pool %in% c(siRNAexps))
 
-trip_mut_lbr2_siRNA <- trip_tib_mut_2000 %>% 
-  filter(exp_pool %in% c(siRNAexps)) 
+trip_mut_lbr2_siRNA <- trip_tib_mut_2000 %>%
+  filter(exp_pool %in% c(siRNAexps))
 
-trip_mut_lbr2_all_siRNA <- trip_tib_mut_all_2000 %>% 
-  filter(exp_pool %in% c(siRNAexps)) 
+trip_mut_lbr2_all_siRNA <- trip_tib_mut_all_2000 %>%
+  filter(exp_pool %in% c(siRNAexps))
 
-trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA %>% 
-  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>% 
+trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>%
   distinct(barcode, siRNA, pathway, drug, .keep_all = TRUE)
 
 exp_order <- c("siNT",
@@ -425,8 +470,8 @@ trip_lbr2_siRNA_pathways$pathway <- factor(trip_lbr2_siRNA_pathways$pathway, lev
 trip_lbr2_siRNA_pathways$siRNA <- factor(trip_lbr2_siRNA_pathways$siRNA, levels=exp_order)
 trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA_pathways[!is.na(trip_lbr2_siRNA_pathways$ratios), ]
 
-trip_mut_lbr2_siRNA_diff <- trip_mut_lbr2_all_siRNA  %>% 
-  select("barcode", "mutation", "freq", "color", "siRNA", "drug") %>% 
+trip_mut_lbr2_siRNA_diff <- trip_mut_lbr2_all_siRNA  %>%
+  select("barcode", "mutation", "freq", "color", "siRNA", "drug") %>%
   spread(siRNA, freq) %>%
   na.omit() %>%
   gather(siCtIP, siLigIV, siNT, siPolQ, siRad51, key = "siRNA", value = "freq") %>%
@@ -442,10 +487,10 @@ trip_mut_lbr2_siRNA_diff$siRNA <- factor(trip_mut_lbr2_siRNA_diff$siRNA, levels=
 
 pathway_contribution <- trip_lbr2_siRNA_pathways %>% group_by(siRNA, pathway, drug) %>% dplyr::summarise(pathway_contr = mean(ratios))
 
-p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, order = pathway)) + 
-  geom_bar(stat = "identity", position = "fill")  + 
+p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, order = pathway)) +
+  geom_bar(stat = "identity", position = "fill")  +
   theme_bw(base_size = 16)
-p + scale_fill_manual("legend", values = colori) + 
+p + scale_fill_manual("legend", values = colori) +
   scale_x_discrete(labels=c("siNT" = "LBR2 siNT",
                             "siLigIV" = "LBR2 siLigIV",
                             "siCtIP" = "LBR2 siCtIP",
@@ -460,11 +505,11 @@ p + scale_fill_manual("legend", values = colori) +
 
 ### Panel H
 ```{r pathway contribution with siRNA per barcode, }
-ggplot(trip_lbr2_siRNA_pathways, 
-       aes(siRNA, ratios, color = pathway)) + 
-  geom_quasirandom() + 
-  theme_bw(base_size = 16) + 
-  ylim(0, 1) + 
+ggplot(trip_lbr2_siRNA_pathways,
+       aes(siRNA, ratios, color = pathway)) +
+  geom_quasirandom() +
+  theme_bw(base_size = 16) +
+  ylim(0, 1) +
   scale_color_manual("legend", values = colori) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))  +
   facet_grid(drug ~ pathway)
@@ -480,24 +525,24 @@ for(i in c("siLigIV",
                "siPolQ",
                "siCtIP",
                "siRad51")) {
-  pvals <- trip_mut_lbr2_siRNA_diff %>% 
-    filter(mutation %in% mutations, 
-           siRNA %in% c("siNT", i), 
+  pvals <- trip_mut_lbr2_siRNA_diff %>%
+    filter(mutation %in% mutations,
+           siRNA %in% c("siNT", i),
            drug == "DMSO") %>%
     do(broom::tidy(t.test(freq ~ siRNA, data = .))) %>%
-    ungroup() %>% 
-    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% 
+    ungroup() %>%
+    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
     select(mutation,conf.low, conf.high, p.value, p.adj) %>%
     arrange(p.adj)
   print(i)
   print(pvals)
 }
 
-trip_tib_mut_filt <- trip_mut_lbr2_all_siRNA %>% 
+trip_tib_mut_filt <- trip_mut_lbr2_all_siRNA %>%
   filter(mutation %in% c("-22", "-14", "-7", "1")) %>%
   group_by(mutation, drug, siRNA)
 
-ggplot(trip_tib_mut_filt, aes(mutation, freq, color = siRNA, alpha = 0.5)) + 
+ggplot(trip_tib_mut_filt, aes(mutation, freq, color = siRNA, alpha = 0.5)) +
   geom_quasirandom(dodge.width=1) +
   theme_bw(base_size = 16) +
   facet_wrap(~ drug)
@@ -511,4 +556,3 @@ getwd()
 date()
 sessionInfo()
 ```
-

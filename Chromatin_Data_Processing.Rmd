@@ -81,8 +81,8 @@ load("/DATA/projects/DSBrepair/data/R/rs20191209_mutation_frequencies_all.RData"
 
 # Loading and prepping the ChIP and DamID data.
 ChIP_mean_data = readRDS("/DATA/projects/DSBrepair/data/R/cl20191219_ChIP_mean_selection_chipmentation.RDS")
-emsembl.seg.GRCh38 <- import("/DATA/projects/DSBrepair/data/features/homo_sapiens.GRCh38.K562.Regulatory_Build.regulatory_activity.20190329.gff")
-state_cluster <- read.table("/DATA/projects/DSBrepair/data/R/cl20190719_pool_64_10_state.txt", col.names = c("barcode", "cluster"), stringsAsFactors = FALSE)
+# emsembl.seg.GRCh38 <- import("/DATA/projects/DSBrepair/data/features/homo_sapiens.GRCh38.K562.Regulatory_Build.regulatory_activity.20190329.gff")
+# state_cluster <- read.table("/DATA/projects/DSBrepair/data/R/cl20190719_pool_64_10_state.txt", col.names = c("barcode", "cluster"), stringsAsFactors = FALSE)
 
 # Spin states
 spin_state <- import("/DATA/projects/DSBrepair/data/K562_SPIN_new_color.bed")
@@ -113,13 +113,13 @@ analysis.mapped.integrations.df$end = analysis.mapped.integrations.df$start
 ```
 
 ```{r}
-# remove alternative chromosomes (not used) in emsembl.seg.GRCh38
-emsembl.seg.GRCh38 <- emsembl.seg.GRCh38[seqnames(emsembl.seg.GRCh38) %in% c(1:22, "X")]
-# rename sequence level emsembl.seg.GRCh38
-chrnames <- unique(paste0("chr", seqnames(emsembl.seg.GRCh38)))
-oldchrnames <- unique(as.character(seqnames(emsembl.seg.GRCh38)))
-names(chrnames) <- oldchrnames
-emsembl.seg.GRCh38 <- renameSeqlevels(emsembl.seg.GRCh38, chrnames)
+# # remove alternative chromosomes (not used) in emsembl.seg.GRCh38
+# emsembl.seg.GRCh38 <- emsembl.seg.GRCh38[seqnames(emsembl.seg.GRCh38) %in% c(1:22, "X")]
+# # rename sequence level emsembl.seg.GRCh38
+# chrnames <- unique(paste0("chr", seqnames(emsembl.seg.GRCh38)))
+# oldchrnames <- unique(as.character(seqnames(emsembl.seg.GRCh38)))
+# names(chrnames) <- oldchrnames
+# emsembl.seg.GRCh38 <- renameSeqlevels(emsembl.seg.GRCh38, chrnames)
 ```
 
 
@@ -144,20 +144,20 @@ mcols(rstp2.gr)$spin_state[queryHits(ovl)] <- mcols(spin_state)$name[subjectHits
 mcols(rstp2.gr)$spin_color[queryHits(ovl)] <- mcols(spin_state)$itemRgb[subjectHits(ovl)]
 
 # Chrom states
-ovl <- findOverlaps(rstp2.gr, emsembl.seg.GRCh38)
-mcols(rstp2.gr)$type <- NA
-mcols(rstp2.gr)$type[queryHits(ovl)]  <- 
-  as.character(mcols(emsembl.seg.GRCh38)$type[subjectHits(ovl)])
-mcols(rstp2.gr)$activity <- NA
-mcols(rstp2.gr)$activity[queryHits(ovl)] <- mcols(emsembl.seg.GRCh38)$activity[subjectHits(ovl)]
-
-nearestovl <- nearest(rstp2.gr, emsembl.seg.GRCh38)
-mcols(rstp2.gr)$nearest_type <- NA
-mcols(rstp2.gr)$nearest_type  <- 
-  mcols(emsembl.seg.GRCh38)$type[nearestovl]
-mcols(rstp2.gr)$nearest_activity <- NA
-mcols(rstp2.gr)$nearest_activity <- 
-  mcols(emsembl.seg.GRCh38)$activity[nearestovl]
+# ovl <- findOverlaps(rstp2.gr, emsembl.seg.GRCh38)
+# mcols(rstp2.gr)$type <- NA
+# mcols(rstp2.gr)$type[queryHits(ovl)]  <- 
+#   as.character(mcols(emsembl.seg.GRCh38)$type[subjectHits(ovl)])
+# mcols(rstp2.gr)$activity <- NA
+# mcols(rstp2.gr)$activity[queryHits(ovl)] <- mcols(emsembl.seg.GRCh38)$activity[subjectHits(ovl)]
+# 
+# nearestovl <- nearest(rstp2.gr, emsembl.seg.GRCh38)
+# mcols(rstp2.gr)$nearest_type <- NA
+# mcols(rstp2.gr)$nearest_type  <- 
+#   mcols(emsembl.seg.GRCh38)$type[nearestovl]
+# mcols(rstp2.gr)$nearest_activity <- NA
+# mcols(rstp2.gr)$nearest_activity <- 
+#   mcols(emsembl.seg.GRCh38)$activity[nearestovl]
 
 # ChIP Domains
 df = data.frame()
