@@ -2,7 +2,7 @@
 title: "Chromatin Data Association"
 author: "Ruben Schep"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
-output: 
+output:
   html_document:
     theme: journal #cerulean
     highlight: monochrome
@@ -16,12 +16,12 @@ output:
 # knitr document van Steensel lab
 
 # Introduction
-After having done the preprocessing of the mapping and the indels, we want to associate the indels with different chromatin marks. 
-1. We will use the ChIP seq data from ENCODE, get the ChIP signal over 1kb of each integration region. 
+After having done the preprocessing of the mapping and the indels, we want to associate the indels with different chromatin marks.
+1. We will use the ChIP seq data from ENCODE, get the ChIP signal over 1kb of each integration region.
 2. We will get LAD calling for each integration. And distance to LAD border.
 3. We want the 5kb bin signal for for each integration for LmnB1, 3xAP3 and ?? from Tom's DamID.
 4. We want gene information (in or out of a gene, distance to TSS, transcriptional data of those genes)
-5. We want chromatin accessibility, with DHS signal. 
+5. We want chromatin accessibility, with DHS signal.
 6. We want compartments
 7. TAD structure could be interesting. TAD border?
 8. We can do domain calling with HiddenDomains from the ChIP seq data and look at domain location and distance.
@@ -39,7 +39,7 @@ knitr::opts_chunk$set(echo = TRUE)
 StartTime <-Sys.time()
 
 # 6-digit Date tag:
-Date <- substr(gsub("-","",Sys.time()),3,8) 
+Date <- substr(gsub("-","",Sys.time()),3,8)
 
 # libraries:
 library(tibble)
@@ -48,6 +48,8 @@ library(rtracklayer)
 library(data.table)
 library(dplyr)
 library(yaml)
+library(stringr)
+
 ```
 
 ### Custom functions
@@ -94,9 +96,9 @@ DNAse_Broad =import.bed('/DATA/projects/DSBrepair/data/tracks_hg38/DNase-seq_K56
 LAD.HMM.gr <- import.bed("/home/t.v.schaik/mydata/proj/3D_nucleus/results/ts180110_4DN_DataProcessing/results/HMM/bin-5kb/K562_LMNB1-5kb-combined_HMM.txt.gz")
 
 # ChIP domains
-damain.files <- list.files("/home/c.leemans/mydata/projects/chip_snake/hg38/hmm/K562/", 
+damain.files <- list.files("/home/c.leemans/mydata/projects/chip_snake/hg38/hmm/K562/",
            recursive = TRUE,
-           pattern="_.*[.]gff3", 
+           pattern="_.*[.]gff3",
            full.names=TRUE)
 names(damain.files) = gsub('.*//(.*)/5kb/(.*).gff3', '\\1_\\2', damain.files)
 damain.files <- damain.files[grep("vdBoom2016_H3K27me3_GSM1319307|Salzberg2017_H3K9me2_ab1220|Bernstein2012_H3K9me3_ENCSR000APE", names(damain.files))]
@@ -146,17 +148,17 @@ mcols(rstp2.gr)$spin_color[queryHits(ovl)] <- mcols(spin_state)$itemRgb[subjectH
 # Chrom states
 # ovl <- findOverlaps(rstp2.gr, emsembl.seg.GRCh38)
 # mcols(rstp2.gr)$type <- NA
-# mcols(rstp2.gr)$type[queryHits(ovl)]  <- 
+# mcols(rstp2.gr)$type[queryHits(ovl)]  <-
 #   as.character(mcols(emsembl.seg.GRCh38)$type[subjectHits(ovl)])
 # mcols(rstp2.gr)$activity <- NA
 # mcols(rstp2.gr)$activity[queryHits(ovl)] <- mcols(emsembl.seg.GRCh38)$activity[subjectHits(ovl)]
-# 
+#
 # nearestovl <- nearest(rstp2.gr, emsembl.seg.GRCh38)
 # mcols(rstp2.gr)$nearest_type <- NA
-# mcols(rstp2.gr)$nearest_type  <- 
+# mcols(rstp2.gr)$nearest_type  <-
 #   mcols(emsembl.seg.GRCh38)$type[nearestovl]
 # mcols(rstp2.gr)$nearest_activity <- NA
-# mcols(rstp2.gr)$nearest_activity <- 
+# mcols(rstp2.gr)$nearest_activity <-
 #   mcols(emsembl.seg.GRCh38)$activity[nearestovl]
 
 # ChIP Domains
@@ -183,13 +185,41 @@ setkey(domains.dt, 'ID')
 
 ```
 
+<!-- start Christ -->
+
+```{r domains}
+near_dir = '/DATA/projects/DSBrepair/data/tracks_20190711/nearest/'
+
+file_list = list.files(near_dir, pattern='20180918.RSTP2', full.names=T)
+
+file.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(.*)-r([0-9]).txt'))
+names(file.dt) = c('file', 'target', 'rep')
+
+rep.dt = file.dt[!is.na(file),
+                 fread(file, col.names=c('barcode', 'domain', 'distance')),
+				 by=c('target', 'rep')]
+
+rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
+
+rep.dt[target=='repliseq',target:='late_replicating']
+
+domains.dt = rep.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
+                                        'Domain', 'iDomain')),
+                    by=c('target', 'barcode')]
+
+```
+
+<!-- end Christ -->
+
+
+
 ```{r data merge}
 chip_domains.dt = chip_cast.dt[domains.dt, on = "ID"]
 
 setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "Bernstein2012_H3K9me3_ENCSR000APE", "Salzberg2017_H3K9me2_ab1220", "vdBoom2016_H3K27me3_GSM1319307"), c("LAD", "DHS_domain", "H3K9me3_domain", "H3K9me2_domain", "H3K27me3_domain"))
 
-trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>% 
-  left_join(state_cluster, by = c("barcode")) %>% 
+trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>%
+  left_join(state_cluster, by = c("barcode")) %>%
   as_tibble()
 trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
 ```
@@ -203,14 +233,14 @@ trip_tib_1000 <- trip_tib %>% filter(binsize == 1000) %>% select_if(not_all_na)
 trip_tib_2000 <- trip_tib %>% filter(binsize == 2000) %>% select_if(not_all_na)
 
 # Same for the mutations plotting file
-trip_tib_mut = left_join(all.mutations.trunc.dt, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>% 
+trip_tib_mut = left_join(all.mutations.trunc.dt, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>%
   left_join(state_cluster, by = c("barcode")) %>% as_tibble()
 trip_tib_mut <- trip_tib_mut[!is.na(trip_tib_mut$exp), ]
 trip_tib_mut_1000 <- trip_tib_mut %>% filter(binsize == 1000) %>% select_if(not_all_na)
 trip_tib_mut_2000 <- trip_tib_mut %>% filter(binsize == 2000) %>% select_if(not_all_na)
 
 # Same for the mutations plotting file
-trip_tib_mut_all = left_join(all.mutations.sep.dt, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>% 
+trip_tib_mut_all = left_join(all.mutations.sep.dt, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>%
   left_join(state_cluster, by = c("barcode")) %>% as_tibble()
 trip_tib_mut_all <- trip_tib_mut_all[!is.na(trip_tib_mut_all$exp), ]
 trip_tib_mut_all_1000 <- trip_tib_mut_all %>% filter(binsize == 1000) %>% select_if(not_all_na)
@@ -256,4 +286,3 @@ sessionInfo()
 rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
 gc() #free up memrory and report the memory usage.
 ```
-
