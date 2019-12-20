@@ -1,0 +1,304 @@
+---
+title: "Figure 4 and supplemental 4"
+author: "Ruben Schep"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output: 
+  html_document:
+    theme: journal #cerulean
+    highlight: monochrome
+    toc: true
+    toc_float: true
+    code_folding: show
+  editor_options:
+    chunk_output_type: console
+---
+
+# knitr document van Steensel lab
+```{r}
+StartTime <-Sys.time()
+library(knitr)
+opts_chunk$set(dev=c('png', 'pdf'), fig.path = file.path("figures/"))
+pdf.options(useDingbats = FALSE)
+```
+
+# Introduction
+
+## Description of Data
+
+# Data processing
+## Path, Libraries, Parameters and Useful Functions
+```{r setup, message=FALSE, warnings=FALSE}
+# 6-digit Date tag:
+Date <- substr(gsub("-","",Sys.time()),3,8) 
+
+# libraries:
+library(ggplot2)
+library(ggpubr)
+# library(reshape2)
+# library(tibble)
+# library(GenomicRanges)
+# library(rtracklayer)
+library(corrr)
+library(Hmisc)
+library(ggbeeswarm)
+library(RColorBrewer)
+library(data.table)
+library(dplyr)
+# library(plyr)
+library(tidyr)
+# library(stringr)
+# library(plotly)
+library(ggpmisc)
+
+
+color_redblue <- rev(brewer.pal(11,"RdBu"))
+duocolor <- c("#EE756E", "#2BB6BE")
+colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
+colores <- c("wt" = "#808184", "other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
+colori  <- c("other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "ssODN" = "#007A4C")
+colora <- c("0" = "#808184", "1" = "#e1251b", "-7" = "#26419a", "-14" = "#26419a")
+coloru <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "MMEJplusNHEJplusHDR" = "#EE8A2A", "HDR" = "#007A4C", "MMEJplusHDR" = "#EE8A2A")
+colory <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "SSTR" = "#007A4C")
+```
+
+### Custom functions
+Functions used thoughout this script.
+```{r, message=FALSE, warnings=FALSE}
+SetFileName <- function(filename, initials) {
+  # Set filename with extension and initials to make filename with date integrated.
+  filename <- substitute(filename)
+  initials <- substitute(initials)
+  filename <- paste0(initials, substr(gsub("-","",Sys.time()),1,8), "_", filename)
+  filename
+}
+
+CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
+  hist.corr.list <- data[data$exp_pool==condition_name, ] %>% select(feature_name, targets) %>% as.matrix() %>% rcorr(type = "pearson")
+  
+  histone.corr.df <- data.frame(rowname = names(hist.corr.list$r[1, -1]), 
+                                corr = hist.corr.list$r[1, -1], 
+                                pvalue = hist.corr.list$P[1, -1])
+  
+  return(histone.corr.df=histone.corr.df)
+}
+
+
+CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
+  cor.df = data.frame()
+  for (i in feature_name){
+    corr.list <- data %>% filter(exp_pool==condition_name) %>% select(i, as.character(targets)) %>% as.matrix() %>% rcorr(type = "pearson")
+  
+    df <- data.frame(rowname = names(corr.list$r[1, -1]), 
+                                corr = corr.list$r[1, -1], 
+                                pvalue = corr.list$P[1, -1],
+                                feature = i)
+    cor.df <- rbind(cor.df, df)
+  }
+  p <- cor.df %>% 
+    transform(rowname = factor(rowname, levels = levels(targets)), 
+              corr = corr, 
+              pvalue = pvalue) %>%
+    ggplot(aes(x = rowname, y = corr, fill = feature, alpha = pvalue < p.value)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    ylab(paste("Pearson correlation with", feature_name)) +
+    xlab("Chromatin Feature") + 
+    ggtitle(paste("Repair pathways correlation with chromatin features in", condition_name, "exps")) +
+    theme_bw(base_size = 16) +
+    scale_fill_manual("legend", values = colores) +
+    scale_y_continuous(breaks=seq(-1,1, .1)) + 
+    coord_flip()
+  return(list(dataframe=cor.df, plot = p))
+}
+```
+
+# Data import
+```{r, message=FALSE, warnings=FALSE}
+load("/DATA/projects/DSBrepair/data/R/RSTP2_Indel_Chromatin_2kb.RData")
+load("/DATA/projects/DSBrepair/data/R/RSTP2_Indel_Chromatin_2kb_all.RData")
+load("/DATA/projects/DSBrepair/data/R/RSTP2_IndelRatios_Chromatin_2kb.RData")
+```
+
+
+## Data loading
+
+```{r preprocess experiments}
+trip_tib_mut <- copy(trip_tib_2000)
+trip_tib_2000 <- trip_tib_2000 %>% distinct(barcode, exp, .keep_all = TRUE)
+
+trip_tib <- trip_tib_2000 %>% 
+  filter(exp_pool == "indel_mean_LBR2_0_64h")
+
+trip_tib_mut <- trip_tib_mut_2000 %>%
+  filter(exp_pool == "indel_mean_LBR2_0_64h")
+
+mean_trip_tib_2000 <- trip_tib_2000 %>% 
+  gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>% 
+  distinct(barcode, exp, pathway, .keep_all = TRUE)
+
+trip_tib$spin_state <- factor(trip_tib$spin_state, levels=c("Speckle",
+                                                                      "Interior_Act1",
+                                                                      "Interior_Act2",
+                                                                      "Interior_Act3",
+                                                                      "Interior_Repr1",
+                                                                      "Interior_Repr2",
+                                                                      "Near_Lm1",
+                                                                      "Near_Lm2",
+                                                                      "Near_Lm3",
+                                                                      "Lamina",
+                                                                      NA ))
+
+mean_trip_tib_2000$pathway <- factor(mean_trip_tib_2000$pathway, levels=c("other_indels", "MMEJ", "NHEJ"))
+mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
+```
+
+## Figures
+### Panel A
+```{r ratio and pathway distribution, fig.height=5, fig.width=6}
+setwd("/DATA/projects/DSBrepair/scratch/")
+ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) + 
+  geom_density() + 
+  theme_bw(base_size = 16) +
+   scale_x_continuous(breaks=seq(0,5, 1)) 
+
+# trip_tib %>% gather(other_indels, NHEJ, MMEJ, 
+#                     key = "pathway", 
+#                     value = 'ratios') %>% 
+#   ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) + 
+#   geom_density() + 
+#   theme_bw(base_size = 16) +
+#   scale_fill_manual("legend", values = colores)
+```
+
+### Panel B
+```{r pathways vs chrom, fig.height=8, fig.width=9}
+chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("LAD", names(trip_tib))-1)
+
+NHEJ.hist.corr <- CorrelationDFMean(trip_tib, "indel_mean_LBR2_0_64h", "NHEJ", targets = chrom.mods.cols) %>% 
+  arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
+
+lims = 1
+colores <- c("other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a")
+
+CorrelationPlotMean(trip_tib, "indel_mean_LBR2_0_64h", c("NHEJ", "MMEJ", "other_indels") , targets = NHEJ.hist.corr)
+```
+
+### Panel C
+```{r scatterplot pathways vs lmnb1 and K4me1, fig.height=8, fig.width=12}
+trip_tib %>% 
+  select(barcode, MMEJ, NHEJ, other_indels, LMNB1, H3K4me1) %>% 
+  group_by(barcode) %>% 
+  gather(MMEJ, NHEJ, other_indels, key = "pathway", value = "ratio") %>%
+  gather(LMNB1, H3K4me1, key = "feature", value = "value") %>%
+  ggplot(., aes(ratio, value))  +  
+  geom_point() +
+  geom_smooth(method= "lm") + 
+  theme_bw(base_size = 16) + 
+  stat_cor(method = "pearson", label.x = .25, label.y = .7) +
+  facet_wrap(feature ~ pathway, scales = "free", ncol = 3)
+```
+
+### Panel D
+```{r}
+het.domains <- colnames(trip_tib)[grep("K9me3_|K9me2_|K27me3_|LAD", colnames(trip_tib))]
+
+trip_tib_domains <- trip_tib %>% select(barcode, het.domains, plasmid, MMEJ_MMEJNHEJ) %>% filter(!is.na(LAD), plasmid == "LBR2") %>% gather(het.domains, key = "dom_type", value = "domain") 
+
+trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c(het.domains[grep("K27me3", het.domains)], 
+                                        het.domains[grep("K9me2", het.domains)], 
+                                        het.domains[grep("K9me3", het.domains)], 
+                                        "LAD"))
+
+trip_tib_domains <- trip_tib_domains %>% mutate(dom_type = ifelse(grepl("K9me3", dom_type), "K9me3", 
+                                                                  ifelse(grepl("K9me2", dom_type), "K9me2", 
+                                                                         ifelse(grepl("K27me3", dom_type), "K27me3", 
+                                                                                "LAD"))),
+                                                domain = ifelse(grepl("iDomain|iAD", domain), "iDomain", 
+                                                                "Domain"))
+
+levels(trip_tib_domains$dom_type)
+
+ggplot(trip_tib_domains, aes(dom_type, MMEJ_MMEJNHEJ, color = domain)) +  geom_quasirandom(size = 1, dodge.width = 1, varwidth = TRUE) + 
+  theme_bw() + scale_color_manual(values = c("iDomain" = "gray", "Domain" = "black"))
+
+trip_tib_domains %>% group_by(dom_type, domain) %>% dplyr::summarise(median_proportion = median(MMEJ_MMEJNHEJ))
+
+trip_tib_domains %>% 
+  # mutate(domain_type = paste0(domain, dom_type, sep = "_")) %>%
+  group_by(dom_type) %>%  
+  do(broom::tidy(wilcox.test(MMEJ_MMEJNHEJ ~ domain, data = .))) %>%
+  ungroup() %>% 
+  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val. 
+  arrange(p.adj)
+
+trip_tib_domains %>% 
+  ungroup %>%
+  group_by(dom_type, domain) %>%  
+  dplyr::summarise(means = mean(MMEJ_MMEJNHEJ),
+                   meadians = median(MMEJ_MMEJNHEJ)) %>%
+  select(-meadians) %>%
+  spread(domain, means) %>%
+  mutate(fold_change = Domain/iDomain)
+
+trip_tib_domains %>% 
+  ungroup %>%
+  group_by(dom_type, domain) %>%  
+  dplyr::summarise(means = mean(MMEJ_MMEJNHEJ),
+                   meadians = median(MMEJ_MMEJNHEJ)) %>%
+  select(-meadians) %>%
+  spread(domain, means) %>%
+  mutate(fold_change = (1-Domain)/(1-iDomain))
+```
+
+
+## Supplementary figures
+### Panel A
+To be done still - I need the domains.
+```{r MMEJ ratio per spin, fig.height=6, fig.width=10}
+spin_color <- trip_tib %>% select(spin_state, spin_color) %>% distinct(spin_state, .keep_all = T) %>% filter(!is.na(spin_state))
+colors <- spin_color$spin_color
+names(colors) <- spin_color$spin_state
+ggplot(filter(trip_tib, !is.na(spin_state)), aes(spin_state, MMEJ_MMEJNHEJ, color = spin_state)) + 
+  geom_quasirandom(size = 3) + 
+  scale_color_manual(values = colors) + 
+  theme_bw(base_size = 16)
+```
+
+### Panel B
+```{r MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
+het.domains <- colnames(trip_tib)[grep("K9me3_|K9me2_|K27me3_|LAD", colnames(trip_tib))]
+
+trip_tib_domains <- trip_tib %>% select(barcode, het.domains, MMEJ_MMEJNHEJ) %>% filter(!is.na(LAD)) %>% gather(het.domains, key = "dom_type", value = "domain") 
+
+trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c(het.domains[grep("K27me3", het.domains)], 
+                                        het.domains[grep("K9me2", het.domains)], 
+                                        het.domains[grep("K9me3", het.domains)], 
+                                        "LAD"))
+
+trip_tib_domains <- trip_tib_domains %>% mutate(dom_type = ifelse(grepl("K9me3", dom_type), "K9me3", 
+                                                                  ifelse(grepl("K9me2", dom_type), "K9me2", 
+                                                                         ifelse(grepl("K27me3", dom_type), "K27me3", 
+                                                                                "LAD"))),
+                                                domain = ifelse(grepl("iDomain|iAD", domain), "iDomain", 
+                                                                "Domain"))
+
+
+levels(trip_tib_domains$dom_type)
+ggplot(trip_tib_domains, aes(dom_type, MMEJ_MMEJNHEJ, color = domain)) +  geom_quasirandom(size = 3, dodge.width = 1) + 
+  theme_bw()
+```
+
+Panel C
+
+# Same with all the indels
+```{r fig.height=7, fig.width=12}
+
+```
+
+# Session Info
+```{r}
+paste("Run time: ",format(Sys.time()-StartTime))
+getwd()
+date()
+sessionInfo()
+```
+

@@ -1,0 +1,805 @@
+---
+title: "Indels Preprocessing"
+author: "Ruben Schep"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    theme: journal #cerulean
+    highlight: monochrome
+    toc: true
+    toc_float: true
+    code_folding: show
+  editor_options:
+    chunk_output_type: console
+---
+
+knitr document van Steensel lab
+
+# Preprocessing of the indel data
+# Introduction
+
+In this script I want to prepocess the datafiles into several working dataframes.
+
+I want one data frame in which I have the number of mutations, per sample, per barcode per indel size.
+This one will be used for plotting indel patterns, calculating ratios later on and such.
+
+I want one dataframe that contains the ratios of each barcode in each sample. These ratios will be :
+This could be a long dataframe, with the following variables: Barcode, sample, ratios ...  
+
+* Efficiency (All mutations / Total or (Total - WT sequences) / Total)  
+* +1 / -7  
+* Deletions / Total  
+* Insertions / Total  
+* +1 / (-7 + -14 + -22)  
+* Barcode effiency vs Overall efficiency  
+
+In this dataframe I would also like to have the means of the samples (here I will ignore the inhibitor treated ones)  
+
+* Mean ratio  
+* Total reads  
+* Mean reads  
+* Median reads  
+
+## Description of Data
+
+For this analysis we need the mapping and the indel data of the TRIP integrations. These
+files are obtained with the crispr_trip.snake script that C. Leemans edited. This data
+contains the genomic locations of the TRIP integrations (hg38) and the indel frequencies
+at each integration.
+
+The mutations were called by counting the distance between two constant regions. These
+were separated by barcode. The barcodes were also filtered on the starcode, to pick out
+the most abundant, and considered real, ones.
+
+Mutations files : *genuine_mapped.table
+
+| barcode  | type | score |
+| ------- | --------- | ----- |
+| TTCTATTCGCACACAA | ins | 1 |
+| TTTCCCACATCAGGAG | wt | 0 |
+| CCATAGTAGTGATTAC | del | -4 |
+
+# Data importing and processing
+## Path, Libraries, Parameters and Useful Functions
+
+```{r setup, message=FALSE, warnings=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+Starttime <-Sys.time()
+
+# 6-digit Date tag:
+Date <- substr(gsub("-","",Sys.time()),1,8)
+
+# libraries:
+library(rtracklayer)
+library(tidyr)
+library(plyr)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+# library(car)
+library(parallel)
+library(gtools)
+library(tibble)
+```
+
+## Custom functions
+Functions used
+
+```{r functions}
+SetFileName <- function(filename, initials) {
+  # Set filename with extension and initials to make filename with date integrated.
+  filename <- substitute(filename)
+  initials <- substitute(initials)
+  filename <- paste0(initials, substr(gsub("-","",Sys.time()),1,8), "_", filename)
+  filename
+}
+
+MeanExperiments <- function(mutdt) {
+  # The mean of the frequency for all sequences.
+  # The sum of their reads
+  # The variance of the frequency
+  means = mutdt[, list(norm = mean(norm),
+                       sd_norm = sd(norm),
+                       count = sum(count)),
+                by=c("barcode", "mutation")]
+  # The variance the the frequency of the indels.
+  # The average number of theoretical cells. 
+  # The total number of theoretical cells.
+  # The total barcode reads.
+  # The average barcode reads. 
+  # The amount of replicates this barcode was found in for this mean experiment.
+  reads = mutdt[, 
+                list(cells = mean(cells),
+                     cells_tot = sum(cells),
+                     sum_bc_reads = sum(sum_bc_reads),
+                     mean_bc_reads = mean(sum_bc_reads),
+                     nexp = length(unique(exp))),
+                by=c("barcode")]
+  # Merge the means and ratio tables (all to keep the wt sequences (mutation = 0))
+  # dt <- merge(means, ratio, by = c("barcode", "mutation"), all = TRUE)
+  dt <- merge(means, reads, by = c("barcode"), all = TRUE)
+  # Add column with number of replicates per barcode.
+  print("Unique Barcodes")
+  print(length(unique(dt$barcode)))
+  print("Dimensions")
+  print(dim(dt))
+  print("nexp max")
+  print(max(dt$nexp))
+  dt
+}
+
+
+ExpFreqCol <- function(dt, samples, mutdt) {
+  freq.df <- mutdt[exp %in% samples, 
+                   list(nexp = length(unique(exp))), 
+                   by = c("barcode")]
+  dt <- left_join(dt, freq.df, by = "barcode")
+  dt <- data.table(dt)
+}
+```
+
+## Data import
+Data import from mapping. These files were generated on 30.09.2018, with a minimum of 500 reads per barcode in the mutation calling.
+
+```{r import}
+# Import files in list and make individual tables
+# I use this if all the samples are good. Here however I do not use all the samples.
+file.list <- list.files("/DATA/projects/DSBrepair/data/rs20190730_TRIP/indelPCR_counts/",
+                                     pattern="_.*[.]count", full.names=T)
+
+# import the data
+df.list <- mclapply(file.list, 
+                    read.table, 
+                    mc.cores = 20, 
+                    header = TRUE, 
+                    stringsAsFactors = FALSE, 
+                    col.names = c("barcode", "type", 
+                                  "mutation", "count"))
+# rename the lists
+names(df.list) <- gsub(".*?/(.*?)[.]cou.*", "\\1", file.list)
+# names(df.list) <- file.list
+# these are the samples
+head(names(df.list))
+# count the sample number
+n.samples <- length(df.list)
+load("/DATA/projects/DSBrepair/data/R/rs20191126_Analyis_Mapping_RSTP2_2000.RData")
+
+# Read metadata file
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20190730_metadata_Repair_TRIP.tsv", 
+                       header = TRUE, 
+                       stringsAsFactors = FALSE) %>% 
+  select(-file, -run, -GCF, -index_length) %>%
+  filter(PCR_type == "indelPCR") %>%
+  data.table()
+
+# This is a manually curated list of mapped integrations for clone 5
+# with specific PCRs and manually going though the iPCR data.
+clone5barcodes <- c("AGGGCGTAAAATATTT.clone5",
+                    "TATGGCTGTCGGGTAG.clone5",
+                    "TGTCCCTTAGTACTTT.clone5",
+                    "AGAAAATAATATGACG.clone5",
+                    "CGGCCTGAAGGTCAGG.clone5",
+                    "TTGAACGCGGGCTCGG.clone5",
+                    "GCTAACATCACGAATC.clone5",
+                    "GCGCACCCTTTAATTG.clone5",
+                    "ACTGTCGAGTTGTCCG.clone5",
+                    "CCGGGGACGTATGCAC.clone5",
+                    "TCTTTTGAGGAGCTGA.clone5",
+                    "ATATCGTTGCTGGAGA.clone5",
+                    "CATCCACCACACTTCA.clone5",
+                    "ACCCCTAAAGGCGCTG.clone5",
+                    "ATACTATATTTAACGG.clone5",
+                    "CATTTCTGATCAATAA.clone5",
+                    "GAGCGCGTCACCGGGT.clone5",
+                    "GTACCTCTCGATAGTG.clone5",
+                    "TGGCCAATATTTGTCT.clone5")
+
+clone5bc <- gsub("clone5", "B", clone5barcodes)
+
+clone9bc <- c("GGTGGTGACGCCAAAG.B",
+              "AGGGAAGAAGCTCGAA.B",
+              "GTTTCGGCCTCCTGTA.B",
+              "TTGCTCTTCCGCAGAT.B",
+              "GGCTACCCTAGCACCA.B",
+              "CTCCTACGACCCCTAA.B",
+              "ATATTATCCCGCACCG.B",
+              "GCCCAGTAATCGTACC.B",
+              "AAAGGTGGGACTATCT.B",
+              "ACCCAACGTCCGACCG.B",
+              "ACCGAAGATGATGGCG.B",
+              "CTGTCCAGTTCGACAT.B")
+```
+
+### Some data pre-processing
+Set everything in a datafram that contains the barcodes, indel ratios, and efficiencies.
+
+```{r indeldataframe}
+
+# To be able to setup the functions in a general way. This means in cases where we have A
+# and B samples.
+mut.list = mclapply(names(df.list), function(exp){
+  dt = data.table(df.list[[exp]])
+  dt[, mutation := as.character(mutation)]
+  dt = dt[mutation != "Inf"]
+  dt[type == "ssODN" & mutation == "2", mutation := "ssODN"]
+  pool = gsub("indel_.*_([AB]|clone5)_.*", "\\1", exp)
+  dt[,barcode := paste(barcode, pool, sep = ".")]
+  sum_count = data.table(exp = exp,
+                         dt[, list(count=sum(count)),
+                            by = c("barcode", "mutation")])
+  return(sum_count)
+}, mc.cores = 10)
+
+
+```
+
+
+```{r}
+mutations.dt = do.call(rbind, c(mut.list, fill = T))
+dim(mutations.dt)
+
+# Remove Run number from exp name and sum the read counts for these experiments.
+mutations.dt[, exp := gsub("_Seq_Run[123]$", "", exp)]
+metadata[, ID := gsub("_Seq_Run[123]$", "", ID)]
+
+metadata = distinct(metadata, ID,.keep_all = TRUE) # group seq runs here also
+
+mutations.dt = mutations.dt[,list(count = sum(count)) , by=c("barcode","exp", "mutation")]
+
+mutationsmeta.dt = mutations.dt[metadata,on = c("exp" = "ID")]
+
+dim(mutationsmeta.dt)
+
+# Clear out the global environment of these large lists
+# remove(mut.list)
+# remove(df.list)
+```
+
+Next we will work on a long dataframe that will include all the ratios (deletions, insertions, +1/-7 etc) for each barcode in each sample.
+
+I found out that some barcodes overlap in A and B but do not have the same integration sites (this has a very low chance). It would be a pitty to trash them, and I do not want to merge them as they are integrated in differente locations. I will name all the barcodes in A sample to "barcode".A and in B to "barcode".B. For this I will use the n.samples to pick out only A and only B data.
+```{r}
+mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc, clone9bc, clone5barcodes) & replicate %in% c("LBR2GSKBIXRep2", "LBR2ssODNRep3", "clonesiRNARep1", "clonesiRNARep2") & mutation %in% c(Inf, -82, -81))]
+```
+
+
+# Analysis
+
+Most of the samples that have a higher average point mutation count are the negative control samples.
+
+This all looks good to me. But before we continue let"s remove the barcode with the weird indels.
+
+```{r generating mapped barcode list}
+samples.names <- unique(mutationsmeta.dt$exp)
+mapped_barcodes <- c(analysis.mapped.integrations.df$barcode, clone5barcodes)
+```
+
+
+```{r}
+# 
+# bc_count.dt = mutationsmeta.dt[, list(sum_bc_reads = sum(count)), by=c("exp", 'barcode')]
+# # We used approximately 600,000 cells per experiment in the PCRs (by amount of gDNA used)
+# bc_count.dt = bc_count.dt[, cells:=(sum_bc_reads/sum(sum_bc_reads))*600000, by='exp'
+#                           
+# pdf('cl20190716_approx_cells.pdf', useDingbats=F)
+# 
+# pool_exps <- bc_count.dt[,unique(exp)] 
+# pool_exps <- pool_exps[grep("clone5", pool_exps, invert = TRUE)]
+# 
+# 
+# for(ex in pool_exps){
+#   dt = bc_count.dt[barcode %in% mapped_barcodes & exp==ex,]
+#   dt[,barcode:=factor(barcode, levels=barcode[order(cells)])]
+#   print(ggplot(dt, aes(x=reorder(barcode, -cells), y=log2(cells))) +
+#           geom_point() +
+#           geom_hline(yintercept=log2(100)) +
+#           geom_hline(yintercept=log2(1)) +
+#           geom_hline(yintercept=log2(2)) +
+#           geom_hline(yintercept=log2(10)) +
+#           geom_hline(yintercept=log2(50)) +
+#           theme(axis.title.x=element_blank(),
+#                 axis.text.x=element_blank(),
+#                 axis.ticks.x=element_blank()) + 
+#           ggtitle(ex))# filt.mutations.dt <- subset(mutationsmeta.dt, fct_reads_bc > 0.00001)
+# }
+# # dev.off()
+# 
+# 
+# error.dt = mutationsmeta.dt[!mutation%in%c(0,NA),
+#                             list(exp=exp, err = ratio_indels-mean(ratio_indels)),
+#                             by=c('barcode', 'mutation')]
+# 
+# error_cell.dt = merge(error.dt, bc_count.dt, by=c('barcode', 'exp'))
+# 
+# pool_exps <- pool_exps[grep("GFP|noguide", pool_exps, invert = TRUE)] # For these remove the GFP samples.
+# 
+# # pdf('cl20190716_error_rates_per_cell.pdf', useDingbats=F)
+# for(ex in pool_exps){
+#   dt = error_cell.dt[barcode %in% mapped_barcodes & exp==ex,]
+#   for(indel in c(1#, -7,'ssODN')
+#     )){
+#     print(ggplot(dt[mutation==indel,], aes(x=log2(cells), y=err)) +
+#             geom_point() +
+#             geom_vline(xintercept=log2(100)) +
+#             geom_vline(xintercept=log2(1)) +
+#             geom_vline(xintercept=log2(2)) +
+#             geom_vline(xintercept=log2(10)) +
+#             geom_vline(xintercept=log2(50)) +
+#             theme(axis.title.x=element_blank(),
+#                   axis.text.x=element_blank(),
+#                   axis.ticks.x=element_blank()) + 
+#             ggtitle(paste0(ex, '\nerror:', indel)))# filt.mutations.dt <- subset(mutationsmeta.dt, fct_reads_bc > 0.00001)
+#   }}
+# # dev.off()
+
+```
+
+```{r}
+dim(mutationsmeta.dt)
+
+bc_count.dt = mutationsmeta.dt[, list(sum_bc_reads = sum(count)), by=c("exp", 'barcode')]
+# We used approximately 600,000 cells per experiment in the PCRs (by amount of gDNA used)
+bc_count.dt = bc_count.dt[, cells:=(sum_bc_reads/sum(sum_bc_reads))*600000, by='exp']
+filt.mutations.dt = mutationsmeta.dt[bc_count.dt[cells > 50, ], on = c("exp", "barcode")]
+
+dim(filt.mutations.dt)
+
+
+filt.map.mutations.dt <- filt.mutations.dt %>%
+  filter(barcode %in% mapped_barcodes) %>% # select only mapped barcodes
+  filter(!barcode %in% c("CATGAGTATTGGGACG.A", "CCCACCCAGCCCACGT.A", "TGTGTCAGTACTACCC.B", "CTCCAGCAGGACCATG.A")) %>%  # shifted barcode
+  filter(!replicate %in% c("LBR2GSKBIXRep3", "LBR2Rep1a", "LBR2Rep1b")) %>%
+  # filter(!exp %in% c("indel_LBR2GSKBIXRep3_A_LBR2_BIX0129_-_-_64", "indel_LBR2GSKBIXRep3_A_LBR2_BIX0129_ssODN_-_64")) %>% # remove low efficiency samples (below 70%) due to transfection efficiency.
+  filter(!is.na(mutation), mutation != Inf) %>% # remove NA in mutation, this is the not_clear row.
+  data.table()
+dim(filt.map.mutations.dt)
+
+filt.map.mutations.dt[,norm:=count/sum(count), by=exp,]
+# filt.map.mutations.dt[,freq:=count/sum(count) , by=c("barcode","exp")]
+# filt.map.mutations.dt[!mutation%in%c(0,NA),ratio_indels:=count/sum(count) , by=c("barcode","exp")]
+# filt.map.mutations.dt[,sum_reads:=sum(count) , by=c("exp")] # Get the sum of all the reads per exp
+# mutationsmeta.dt[,fct_reads_bc:=sum_bc_reads/sum_reads , by=c("barcode","exp")] # Get the fraction of barcode reads per exp reads.
+```
+
+
+```{r}
+# filt.mutations.dt %>% group_by(barcode) %>% distinct(barcode, exp) %>%
+#   dplyr::count() %>%
+#   ggplot(aes(reorder(barcode, -n), n)) + geom_bar(stat = "identity") + 
+#   theme_bw(base_size = 16) +
+#   theme(axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank())
+# 
+# filt.map.mutations.dt %>% group_by(barcode) %>% distinct(barcode, exp) %>%
+#   dplyr::count() %>%
+#   ggplot(aes(reorder(barcode, -n), n)) + geom_bar(stat = "identity") + 
+#   theme_bw(base_size = 16) +
+#   theme(axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank())
+```
+
+
+```{r make groups}
+# All LBR2 64h samples
+metadata$samples = "-"
+
+# LBR2.mix.64h.samples <- metadata %>% filter(plasmid == "LBR2", drug %in% c("-","DMSO"), ssODN == "-", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+# LBR2.mix.64h.samples <- LBR2.mix.64h.samples[grep("LBR2Rep1", LBR2.mix.64h.samples, invert = TRUE)] # remove rep 1 which was a test run (low transfection efficiency for pool A)
+# metadata[ID %in% LBR2.mix.64h.samples, ]$samples = "indel_mean_LBR2_mix_64h"
+
+LBR2._.64h.samples <- metadata %>% filter(plasmid == "LBR2", drug == "-", ssODN == "-", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+LBR2._.64h.samples <- LBR2._.64h.samples[grep("LBR2Rep1", LBR2._.64h.samples, invert = TRUE)] # remove rep 1 which was a test run (low transfection efficiency for pool A)
+metadata[ID %in% LBR2._.64h.samples, ]$samples = "indel_mean_LBR2_0_64h"
+
+# DMSO samples
+LBR2.DMSO.64h.samples <- metadata %>% filter(plasmid == "LBR2", drug == "DMSO", ssODN == "-", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.DMSO.64h.samples, ]$samples = "indel_mean_LBR2_DMSO_64h"
+
+# NU7441 LBR2 sample
+LBR2.NU7441.64h.samples <- metadata %>% filter(plasmid == "LBR2", drug == "NU7441", ssODN == "-", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.NU7441.64h.samples, ]$samples = "indel_mean_LBR2_NU7441_64h"
+
+# ssODN samples
+LBR2.ssODN.DMSO.samples <- metadata %>% filter(plasmid == "LBR2", drug == "DMSO", ssODN == "ssODN", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.ssODN.DMSO.samples, ]$samples = "indel_mean_LBR2_ssODN_DMSO_64h"
+
+LBR2.ssODN.NU7441.samples <- metadata %>% filter(plasmid == "LBR2", drug == "NU7441", ssODN == "ssODN", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.ssODN.NU7441.samples, ]$samples = "indel_mean_LBR2_ssODN_NU7441_64h"
+
+# 88h samples
+LBR2.mix.88h.samples <- metadata %>% filter(plasmid == "LBR2", drug %in% c("-","DMSO"), ssODN == "-", siRNA == "-", time == 88) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.mix.88h.samples, ]$samples = "indel_mean_LBR2_mix_88h"
+
+# BIX samples
+LBR2.BIX01294.samples  <- metadata %>% filter(plasmid == "LBR2", drug == "BIX01294", ssODN == "-", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.BIX01294.samples, ]$samples = "indel_mean_LBR2_BIX01294_64h"
+
+# GSK samples
+LBR2.GSK126.samples <- metadata %>% filter(plasmid == "LBR2", drug == "GSK126", ssODN == "-", siRNA == "-", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.GSK126.samples, ]$samples = "indel_mean_LBR2_GSK126_64h"
+
+# siRNA samples DMSO
+LBR2.siNT.samples <- metadata %>% filter(plasmid == "LBR2", drug == "DMSO", ssODN == "-", siRNA == "siNT", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siNT.samples, ]$samples = "indel_mean_LBR2_siNT_DMSO_64h"
+LBR2.siPolQ.samples <- metadata %>% filter(plasmid == "LBR2", drug == "DMSO", ssODN == "-", siRNA == "siPolQ", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siPolQ.samples, ]$samples = "indel_mean_LBR2_siPolQ_DMSO_64h"
+LBR2.siCtIP.samples <- metadata %>% filter(plasmid == "LBR2", drug == "DMSO", ssODN == "-", siRNA == "siCtIP", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siCtIP.samples, ]$samples = "indel_mean_LBR2_siCtIP_DMSO_64h"
+LBR2.siLigIV.samples <- metadata %>% filter(plasmid == "LBR2", drug == "DMSO", ssODN == "-", siRNA == "siLigIV", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siLigIV.samples, ]$samples = "indel_mean_LBR2_siLigIV_DMSO_64h"
+LBR2.siRad51.samples <- metadata %>% filter(plasmid == "LBR2", drug == "DMSO", ssODN == "-", siRNA == "siRad51", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siRad51.samples, ]$samples = "indel_mean_LBR2_siRad51_DMSO_64h"
+
+# siRNA samples NU7441
+LBR2.siNT.NU.samples <- metadata %>% filter(plasmid == "LBR2", drug == "NU7441", ssODN == "-", siRNA == "siNT", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siNT.NU.samples, ]$samples = "indel_mean_LBR2_siNT_NU7441_64h"
+LBR2.siPolQ.NU.samples <- metadata %>% filter(plasmid == "LBR2", drug == "NU7441", ssODN == "-", siRNA == "siPolQ", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siPolQ.NU.samples, ]$samples = "indel_mean_LBR2_siPolQ_NU7441_64h"
+LBR2.siCtIP.NU.samples <- metadata %>% filter(plasmid == "LBR2", drug == "NU7441", ssODN == "-", siRNA == "siCtIP", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siCtIP.NU.samples, ]$samples = "indel_mean_LBR2_siCtIP_NU7441_64h"
+LBR2.siLigIV.NU.samples <- metadata %>% filter(plasmid == "LBR2", drug == "NU7441", ssODN == "-", siRNA == "siLigIV", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siLigIV.NU.samples, ]$samples = "indel_mean_LBR2_siLigIV_NU7441_64h"
+LBR2.siRad51.NU.samples <- metadata %>% filter(plasmid == "LBR2", drug == "NU7441", ssODN == "-", siRNA == "siRad51", time == 64) %>% pull(ID) %>% unique()
+metadata[ID %in% LBR2.siRad51.NU.samples, ]$samples = "indel_mean_LBR2_siRad51_NU7441_64h"
+
+metadatafilt = metadata[grep("LBR2Rep1|LBR2GSKBIXRep3", metadata$replicate, invert = TRUE), ]
+```
+
+# Make metadata for mean experiments
+```{r}
+# LBR2.mix.64h <- metadata %>%
+#   filter(ID %in% LBR2.mix.64h.samples) %>%
+#   distinct(plasmid, .keep_all = TRUE) %>%
+#   select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_mix_64h", drug = "mix")
+
+LBR2.DMSO.64h <- metadata %>%
+  filter(ID %in% LBR2.DMSO.64h.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_DMSO_64h")
+
+LBR2._.64h <- metadata %>%
+  filter(ID %in% LBR2._.64h.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_0_64h")
+
+LBR2.NU7441.64h <- metadata %>%
+  filter(ID %in% LBR2.NU7441.64h.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_NU7441_64h")
+
+LBR2.ssODN.DMSO.64h <- metadata %>%
+  filter(ID %in% LBR2.ssODN.DMSO.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_ssODN_DMSO_64h")
+
+LBR2.ssODN.NU7441.64h <- metadata %>%
+  filter(ID %in% LBR2.ssODN.NU7441.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_ssODN_NU7441_64h")
+
+LBR2.BIX0192.64h <- metadata %>%
+  filter(ID %in% LBR2.BIX01294.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_BIX01294_64h")
+
+LBR2.GSK126.64h <- metadata %>%
+  filter(ID %in% LBR2.GSK126.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_GSK126_64h")
+
+LBR2.mix.88h <- metadata %>%
+  filter(ID %in% LBR2.mix.88h.samples) %>%
+  distinct(plasmid, .keep_all = TRUE) %>%
+  select(plasmid, drug, ssODN, siRNA, time) %>% mutate(exp = "indel_mean_LBR2_mix_88h", drug = "mix")
+
+# Add siRNA metadata: 
+siRNA.meta <- data.frame(plasmid = rep("LBR2", each = 10), 
+                         drug = c(rep(c("DMSO", "NU7441"), each = 5)),
+                         ssODN = "ssODN",
+                         siRNA = rep(c("siNT", "siCtIP", "siPolQ", "siLigIV", "siRad51"), times = 2),
+                         time = 64,
+                         exp = c("indel_mean_LBR2_siNT_DMSO_64h",
+                                  "indel_mean_LBR2_siCtIP_DMSO_64h",
+                                  "indel_mean_LBR2_siPolQ_DMSO_64h",
+                                  "indel_mean_LBR2_siLigIV_DMSO_64h",
+                                  "indel_mean_LBR2_siRad51_DMSO_64h",
+                                  "indel_mean_LBR2_siNT_NU7441_64h",
+                                  "indel_mean_LBR2_siCtIP_NU7441_64h",
+                                  "indel_mean_LBR2_siPolQ_NU7441_64h",
+                                  "indel_mean_LBR2_siLigIV_NU7441_64h",
+                                  "indel_mean_LBR2_siRad51_NU7441_64h"))
+
+meanmetadata <- rbind(LBR2.DMSO.64h,
+      LBR2._.64h,
+      LBR2.NU7441.64h,
+      LBR2.ssODN.DMSO.64h,
+      LBR2.ssODN.NU7441.64h,
+      LBR2.BIX0192.64h,
+      LBR2.GSK126.64h,
+      LBR2.mix.88h,
+      siRNA.meta)
+
+meanmetadata <- mutate(meanmetadata, No = 0, PCR_type = "indelPCR", replicate = "mean", pool = ifelse(grepl("si", exp), "clone5", "AB"))
+
+```
+
+
+```{r mean replicates}
+dim(filt.map.mutations.dt)
+map.meta.mutations.dt = filt.map.mutations.dt[metadatafilt[, c("ID", "samples")], on = c("exp" = "ID")]
+map.meta.mutations.dt = map.meta.mutations.dt[barcode != "<NA>"]
+dim(map.meta.mutations.dt)
+
+# Let"s make the mean of all the replicates with the MeanExperiments function
+mean.mutations.dt = map.meta.mutations.dt[,MeanExperiments(.SD), by=c("samples")]
+
+mean.mutations.dt = mean.mutations.dt[nexp > 1] # Barcodes have to be present in at least 2 experiments for the mean. 
+
+mean.mutations.dt = mean.mutations.dt[samples != "-", ]
+setnames(mean.mutations.dt, old = "samples", new = "exp")
+mean.mutations.dt = mean.mutations.dt[!is.na(barcode)]
+# mean.mutations.dt[, "sum_reads"] <- NA
+colnames(mean.mutations.dt)
+
+sep.mutations.dt = map.meta.mutations.dt[, c("samples", "cells_tot", "mean_bc_reads", "sd_norm", "nexp") := 
+                        list(NULL, NA, NA, NA, 1)]
+colnames(sep.mutations.dt)
+# add metadata to mean mutations.
+mean.mutations.dt = mean.mutations.dt[meanmetadata, on = "exp"]
+
+# Merge both single and mean data tables
+all.mutations.dt <- rbind(sep.mutations.dt, mean.mutations.dt)
+
+all.mutations.dt[,freq := norm/sum(norm), 
+                 by = c("barcode","exp")]
+all.mutations.dt[!mutation%in%c(0,NA), 
+                 ratio_indels := norm/sum(norm), 
+                 by=c("barcode","exp")]
+all.mutations.dt[,sum_reads:=sum(count) , by=c("exp")] # Get the sum of all the reads per exp
+```
+
+```{r conditions}
+all.mutations.dt[, PCR_type := NULL] # remove PCR_type colmn
+setnames(all.mutations.dt, "No", "no") # rename No to no
+
+ # add exp_pool that removes the A/B pool from exp name and rename AB pools to RSTP2
+all.mutations.dt[, c("exp_pool", "pool", "barcode") := list(gsub("_[AB?]_|_clone5_", "_", exp),
+                                                 gsub("A|B|AB", "20180918.RSTP2", pool),
+                                                 gsub(".clone5", ".B", barcode))]
+
+# reorder in convenient way
+setcolorder(all.mutations.dt, c("exp", "barcode", "nexp", "no","exp_pool",
+                               "replicate", "pool", "plasmid", "time", "drug",
+                               "ssODN", "siRNA", "sum_reads", "mean_bc_reads", "sum_bc_reads", "cells", "cells_tot",
+                               "mutation", "count", "norm", "sd_norm",
+                               "ratio_indels", "freq"))
+```
+
+```{r color guide}
+# Assign a color column with info on the pathway specific indels.
+all.mutations.dt[, color := "other"]
+all.mutations.dt[mutation == 0, color := "wt"]
+all.mutations.dt[mutation == 1, color := "NHEJ"]
+all.mutations.dt[mutation %in% c(-7, -22, -14), color := "MMEJ"]
+all.mutations.dt[mutation == "ssODN", color := "SSTR"]
+
+# same for LBR1
+all.mutations.dt[, color_LBR1 := "other"]
+all.mutations.dt[mutation == 0, color_LBR1 := "wt"]
+all.mutations.dt[mutation %in% c(1, -1, -2, -3, -4, -6), color_LBR1 := "NHEJ"]
+all.mutations.dt[mutation %in% c(-5, -8), color_LBR1 := "MMEJ"]
+
+# add an AB_pool qualifier per barcode (and rename pool column)
+setnames(all.mutations.dt, "pool", "cell_line")
+all.mutations.dt[, pool := gsub(".*[.]", "", barcode)]
+```
+
+```{r large indels}
+# Fix large deletions for every deletion above 25
+largedels <- as.character(seq(-130, -15))
+columnstokeep <- names(all.mutations.dt)[!names(all.mutations.dt) %in% c("count", "ratio_indels", "freq", "mutation", "color", "norm", "sd_norm")]
+
+mutations.large.del.dt = all.mutations.dt[mutation %in% largedels, ]
+mutations.large.del.dt = mutations.large.del.dt[, lapply(.SD, sum, na.rm=TRUE), by=c(columnstokeep),
+                                                .SDcols=c("count", "ratio_indels", "freq", "norm", "sd_norm")]
+mutations.large.del.dt[, mutation:="<-15"]
+
+# Fix large insertions for every insertions above 3
+largeins <- as.character(seq(3, 20))
+mutations.large.ins.dt = all.mutations.dt[mutation %in% largeins, ]
+mutations.large.ins.dt = mutations.large.ins.dt[, lapply(.SD, sum, na.rm=TRUE), by=c(columnstokeep),
+                                                .SDcols=c("count", "ratio_indels", "freq", "norm", "sd_norm")]
+mutations.large.ins.dt[, mutation:=">3"]
+
+mutations.large.del.dt
+mutations.large.ins.dt
+
+large.indels.dt = rbind(mutations.large.del.dt, mutations.large.ins.dt)
+
+large.indels.dt[mutation %in% c(">3", "<-15"), color := "other"]
+
+setcolorder(large.indels.dt,c("exp", "barcode", "nexp", "no","exp_pool",
+                              "replicate", "pool", "cell_line", "plasmid", "time", "drug",
+                              "ssODN", "siRNA", "sum_reads", "mean_bc_reads", "sum_bc_reads", "cells", "cells_tot", 
+                              "mutation", "count",
+                              "ratio_indels", "freq", "norm", "sd_norm"))
+all.mutations.sep.dt = copy(all.mutations.dt)
+dim(all.mutations.sep.dt)
+all.mutations.trunc.dt = rbind(all.mutations.sep.dt, large.indels.dt)
+all.mutations.trunc.dt
+all.mutations.trunc.dt = all.mutations.trunc.dt[!mutation %in% largedels, ]
+all.mutations.trunc.dt = all.mutations.trunc.dt[!mutation %in% largeins, ]
+all.mutations.trunc.dt
+dim(all.mutations.trunc.dt)
+```
+
+```{r}
+muts <- unique(all.mutations.dt$mutation)
+indels <- sort(as.numeric(muts[-grep("ssODN|<|>", muts)]))
+indels.odn <- c(as.character(indels), "ssODN")
+muts <- unique(all.mutations.trunc.dt$mutation)
+indels <- sort(as.numeric(muts[-grep("ssODN|<|>", muts)]))
+indels.trunc.odn <- c("<-15", as.character(indels), ">3", "ssODN")
+
+
+# head(trip_tib_mut_2000)
+all.mutations.trunc.dt$mutation <- factor(all.mutations.trunc.dt$mutation, levels=indels.trunc.odn)
+all.mutations.sep.dt$mutation <- factor(all.mutations.sep.dt$mutation, levels=indels.odn)
+all.mutations.dt$mutation <- factor(all.mutations.dt$mutation, levels=indels.odn)
+```
+
+```{r export seperate mutations}
+setwd("/DATA/projects/DSBrepair/data/R/")
+# The mutations list that can be loaded for the indel spectra plots.
+filename <- SetFileName("mutation_frequencies_all.RData", "rs")
+save(all.mutations.sep.dt, file = filename)
+filename <- SetFileName("mutation_frequencies_trunc.RData", "rs")
+save(all.mutations.trunc.dt, file = filename)
+```
+
+
+We now have 3 data files that we can use for subsequent analysis.
+1. The indel list of the summed experiments for the indel spectra plotting.
+2. The indel data table of the read counts of the summed experiments.
+3. The indel data table of the percentaage/frequencies of each indel of the summed experiments.
+
+What we now need to do is make a bas data table with some key numbers. Which ones do we want?
+- Efficiency
+- Total insertion fequency
+- Total deletion frequency
+- +1 / -7 ratio
+- +1 / c(-7, -14, -22)
+- Freq c(-7, -14, -22)
+- Freq c(-10:-8, -6:-1)
+
+
+```{r}
+MH_less_dels <- as.character(seq(-6, -1))
+```
+
+
+# Indel proportions data frame.
+We will not calculate the +1 / -7 ratios, we will count the proportion of -22, -14 -7, +1 and +2. I want to have the total insertions, total deletions and efficiences.
+```{r calculate_ratios}
+# Make all the sums, pct and ratios :
+tib_ratios <-  as_tibble(all.mutations.dt)
+
+MMEJ <- all.mutations.dt[mutation%in%c(-7,-14,-22), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = MMEJ, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "MMEJ"
+tib_ratios[is.na(tib_ratios$MMEJ), "MMEJ"] = 0
+
+NHEJ <- all.mutations.dt[mutation == 1 , sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = NHEJ, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "NHEJ"
+tib_ratios[is.na(tib_ratios$NHEJ), "NHEJ"] = 0
+
+SSTR <- all.mutations.dt[mutation == "ssODN", sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = SSTR, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "SSTR"
+tib_ratios[is.na(tib_ratios$SSTR), "SSTR"] = 0
+
+reads_MMEJ <- all.mutations.dt[mutation%in%c(-7,-14,-22), sum(count) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = reads_MMEJ, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "reads_MMEJ"
+
+reads_NHEJ <- all.mutations.dt[mutation == 1 , sum(count) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = reads_NHEJ, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "reads_NHEJ"
+
+reads_SSTR <- all.mutations.dt[mutation == "ssODN" , sum(count) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = reads_SSTR, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "reads_SSTR"
+
+reads_NHEJ_MMEJ <- all.mutations.dt[mutation%in%c(1, -7,-14,-22) , sum(count) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = reads_NHEJ_MMEJ, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "reads_NHEJ_MMEJ"
+
+reads_SSTR_MMEJ <- all.mutations.dt[mutation%in%c("ssODN", -7,-14,-22) , sum(count) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = reads_SSTR_MMEJ, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "reads_SSTR_MMEJ"
+
+reads_SSTR_NHEJ <- all.mutations.dt[mutation%in%c(1, "ssODN") , sum(count) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = reads_SSTR_NHEJ, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "reads_SSTR_NHEJ"
+
+MH_less <- all.mutations.dt[mutation%in%c(MH_less_dels), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = MH_less, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "MH_less"
+
+LigIV <- all.mutations.dt[mutation%in%c(MH_less_dels, 1, 2), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = LigIV, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "LigIV"
+
+other_indels <- all.mutations.dt[!mutation%in%c(0, 1, -7,-14,-22, "ssODN"), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = other_indels, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "other_indels"
+
+efficiency <- all.mutations.dt[mutation == 0, 1 - freq , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = efficiency, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "efficiency"
+
+insertions <- all.mutations.dt[mutation%in%seq(-120, -1), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = insertions, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "insertions"
+
+deletions <- all.mutations.dt[mutation%in%seq(1, 15), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = deletions, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "deletions"
+
+indel_reads <- all.mutations.dt[mutation != 0, sum(count) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = indel_reads, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "indel_reads"
+
+large_del <- all.mutations.dt[mutation%in%largedels, sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = large_del, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "large_del"
+
+large_ins <- all.mutations.dt[mutation%in%largeins, sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = large_ins, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "large_ins"
+
+MMEJ_LBR1 <- all.mutations.dt[mutation%in%c(-5, -8), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = MMEJ_LBR1, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "MMEJ_LBR1"
+
+NHEJ_LBR1 <- all.mutations.dt[mutation%in%c(-6, -4, -3, -2, -1, 1), sum(ratio_indels) , by=c("barcode","exp")]
+tib_ratios <- full_join(tib_ratios, y = NHEJ_LBR1, by = c("barcode","exp"))
+names(tib_ratios)[ncol(tib_ratios)] <- "NHEJ_LBR1"
+
+tib_ratios
+
+tib_ratios = tib_ratios %>% mutate(NHEJ_MMEJ = NHEJ/MMEJ,
+                                   MMEJ_NHEJ = MMEJ/NHEJ,
+                                   LigIV_MMEJ = LigIV/MMEJ,
+                                   MMEJ_LigIV = MMEJ/LigIV,
+                                   ins_del = insertions/deletions,
+                                   MMEJ_MMEJNHEJ = MMEJ/(NHEJ+MMEJ),
+                                   SSTR_MMEJSSTR = SSTR/(SSTR+MMEJ),
+                                   SSTR_NHEJSSTR = SSTR/(SSTR+NHEJ))
+
+tib_RSTP2_2000_mutations <- tib_ratios
+```
+
+## Processed data export
+The files will be saved in the processed data folder.
+```{r export}
+# Export it for the efficiency analysis. To test potential normalisation.
+setwd("/DATA/projects/DSBrepair/data/R/")
+
+# The ratios data for the efficiency analysis
+filename <- SetFileName("total_indel_data.RData", "rs")
+save(tib_RSTP2_2000_mutations, file = filename)
+```
+### Conclusions
+I"m happy with the output I"ve generated. I should still work on checking what the best amount of reads is that I need for correct correlations etc.
+### Session Info
+```{r session_info}
+sessionInfo()
+getwd()
+date()
+paste("Run time: ",format(Sys.time()-Starttime))
+rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
+gc() #free up memrory and report the memory usage.
+```
