@@ -136,7 +136,7 @@ These are data from the crispr-trip.snake script, and a text file that has has b
 
 ```{r data loading}
 # First I load the statistics data from the mapping.
-file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20190716_TRIP/parsed/", pattern="mapping*.*statistics.txt", full.names = TRUE)
+file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20190730_TRIP/parsed/", pattern="mapping*.*statistics.txt", full.names = TRUE)
 mapping.statistics.list <- lapply(file.list, read.table, 
                                   header = TRUE)
 names(mapping.statistics.list)<- gsub(".*/iPCR.mapping_(.*?)_Seq_Run1.statistics.txt", 
@@ -146,7 +146,7 @@ mapping.statistics.df <- do.call(rbind.data.frame,
                                  mapping.statistics.list)
 
 # I also want to load the mapping data
-file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20190716_TRIP/table/", pattern="*.table", full.names = TRUE)
+file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20190730_TRIP/table/", pattern="*.table", full.names = TRUE)
 mapping.list <- lapply(file.list, read.table,
                        header = TRUE)
 names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table", 
@@ -156,7 +156,7 @@ names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table",
 list2env(mapping.list ,.GlobalEnv)
 
 # Load metadata
-metadata <- read.table("/DATA/projects/DSBrepair/config/rs20190730_metadata_Repair_TRIP.tsv", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200107_metadata_Repair_TRIP.tsv", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 ## Some data pre-processing  
