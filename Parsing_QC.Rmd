@@ -83,7 +83,7 @@ For the genuine (mapped and unmapped) and non-genuine barcode counts I will just
 StartTime <-Sys.time()
 
 # 6-digit Date tag:
-Date <- substr(gsub("-","",Sys.time()),1,8) 
+Date <- substr(gsub("-","",Sys.time()),1,8)
 
 # libraries:
 library(plyr)
@@ -95,7 +95,7 @@ library(ggplot2)
 # library(magrittr)
 
 ## Select outdir
-out.dir = "/DATA/projects/DSBrepair/data/R/rs20191220/"
+out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 ```
  
@@ -128,14 +128,6 @@ BarcodeOverlap <- function(read1, read2) {
               sum(!read1$barcode %in% read2$barcode),
               sum(!read2$barcode %in% read1$barcode))
 }
-
-SetFileName <- function(filename, initials) {
-  # Set filename with extension and initials to make filename with date integrated.
-  filename <- substitute(filename)
-  initials <- substitute(initials)
-  filename <- paste0(out.dir, initials, substr(gsub("-","",Sys.time()),1,8), filename)
-  filename
-}
 ```
 
 ## Data loading  
@@ -164,7 +156,7 @@ names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table",
 list2env(mapping.list ,.GlobalEnv)
 
 # Load metadata
-metadata <- read.table("/DATA/projects/DSBrepair/config/rs20190708_metadata_Repair_TRIP.tsv", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20190730_metadata_Repair_TRIP.tsv", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 ## Some data pre-processing  
@@ -450,7 +442,7 @@ bed.mapped.integrations.df <- mapped.integrations.df[, c("seqname",
 write.table(bed.mapped.integrations.df, "/DATA/projects/DSBrepair/data/rs20190705_TRIP/rs20190711_mappedintegrations.tsv", sep = "\t", quote = FALSE)
 
 # Let"s export this data frame to a bed file for the means chip script and hidden domains from christ
-filename <- SetFileName("_Mapping_RSTP2_2000.bed", "rs")
+filename <- paste0(out.dir, "_Mapping_RSTP2_2000.bed")
 write.table(bed.mapped.integrations.df, 
             file=filename, 
             quote=F, 
@@ -469,7 +461,7 @@ analysis.mapped.integrations.df <- mapped.integrations.df[, c("seqname",
                                                               "freq1")]
 names(analysis.mapped.integrations.df)[2:3] <- c("start", "ori")
 
-filename <- SetFileName("_Analyis_Mapping_RSTP2_2000.txt", "rs")
+filename <- paste0(out.dir, "Analyis_Mapping_RSTP2_2000.txt")
 write.table(analysis.mapped.integrations.df, 
             file=filename, 
             quote=F, 
@@ -478,7 +470,7 @@ write.table(analysis.mapped.integrations.df,
             col.names=T)
 
 # RData for the next scripts
-filename <- SetFileName("_Analyis_Mapping_RSTP2_2000.RData", "rs")
+filename <- paste0(out.dir, "Analyis_Mapping_RSTP2_2000.RData")
 save(analysis.mapped.integrations.df, file = filename)
 ```
 
@@ -488,5 +480,6 @@ sessionInfo()
 getwd()
 date()
 paste("Run time: ",format(Sys.time()-StartTime))
-
+rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
+gc() #free up memrory and report the memory usage.
 ```

@@ -17,7 +17,14 @@ output:
 ```{r}
 StartTime <-Sys.time()
 library(knitr)
-opts_chunk$set(dev=c('png', 'pdf'), fig.path = file.path("figures/"))
+
+# 8-digit Date tag:
+Date <- substr(gsub("-","",Sys.time()),1,8) 
+
+## Select outdir
+out.dir = paste0("figures/rs", Date, "/")
+dir.create(out.dir)
+opts_chunk$set(dev=c('png', 'pdf'), fig.path = file.path(out.dir))
 pdf.options(useDingbats = FALSE)
 ```
 
@@ -28,8 +35,12 @@ pdf.options(useDingbats = FALSE)
 # Data processing
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
-# 6-digit Date tag:
-Date <- substr(gsub("-","",Sys.time()),3,8) 
+
+
+# INPUT DIRECTORY
+in.dir.date = 20191230
+in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
+
 
 # libraries:
 library(ggplot2)
@@ -42,14 +53,17 @@ library(corrr)
 library(Hmisc)
 library(ggbeeswarm)
 library(RColorBrewer)
-library(data.table)
+
 library(dplyr)
 # library(plyr)
 library(tidyr)
 # library(stringr)
 # library(plotly)
 library(ggpmisc)
-
+library(UpSetR)
+library(stringr)
+library(gridExtra)
+library(data.table)
 
 color_redblue <- rev(brewer.pal(11,"RdBu"))
 duocolor <- c("#EE756E", "#2BB6BE")
@@ -113,9 +127,28 @@ CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.v
 
 # Data import
 ```{r, message=FALSE, warnings=FALSE}
-load("/DATA/projects/DSBrepair/data/R/RSTP2_Indel_Chromatin_2kb.RData")
-load("/DATA/projects/DSBrepair/data/R/RSTP2_Indel_Chromatin_2kb_all.RData")
-load("/DATA/projects/DSBrepair/data/R/RSTP2_IndelRatios_Chromatin_2kb.RData")
+load(paste0(in.dir, "RSTP2_Indel_Chromatin_2kb.RData"))
+load(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RData"))
+
+
+# Import ChIP2 & ChIP3 experiments
+load("/DATA/projects/DSBrepair/data/R/xv20190515_ChIP3Timepoints_correctedv3.RData")
+ChIP3 <- chip.analysis.tib
+load("/DATA/projects/DSBrepair/data/R/xv20190514_ChIP2Chromatinmarks.RData")
+ChIP2 <- chip.analysis.tib
+
+# Select samples and columns we are interested in inpbcreads basically
+ChIP3.selected <- ChIP3 %>% filter(antibody %in% c("H3K27me3") & sgRNA == "noguide") %>% select(c("barcode","antibody","inpindelreads"))
+ChIP2.selected <- ChIP2 %>% filter(antibody %in% c("H3K4me1","H3K27ac","H3K9me3") & sgRNA == "noguide") %>% select(c("barcode","antibody","inpindelreads"))
+
+#Merge both tibs in a single tib
+selected.chip.tib <- plyr::rbind.fill(ChIP2.selected,ChIP3.selected)
+
+#log2 transform inpindelreads
+log2.sel.amp.tib <- selected.chip.tib %>% 
+  mutate(amp.indelpcr.mean = log2(inpindelreads),
+         barcode = paste0(barcode, ".B")) %>%
+  select(c("barcode","antibody","amp.indelpcr.mean"))
 ```
 
 
@@ -150,7 +183,9 @@ trip_tib$spin_state <- factor(trip_tib$spin_state, levels=c("Speckle",
                                                                       "Lamina",
                                                                       NA ))
 ```
-
+# Figures
+## Main Figure
+### Panel A
 ```{r efficiency LBR1 and LBR2, fig.height=4, fig.width=5}
 barcodes <- trip_tib %>% group_by(barcode) %>% dplyr::summarise(count = n()) %>% filter(count > 1) %>% pull(barcode)
 trip_tib <- trip_tib %>% filter(barcode %in% barcodes)
@@ -161,6 +196,8 @@ ggplot(trip_tib, aes(efficiency, fill = plasmid, alpha = 0.8)) +
   
 ```
 
+### Panel B
+
 ```{r efficiency LBR2 vs LBR1, fig.height=5, fig.width=5}
 trip_tib %>% select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR2, LBR1))  +  
   geom_point() +
@@ -169,11 +206,13 @@ trip_tib %>% select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency
   stat_cor(method = "spearman", label.x = .25, label.y = .7) 
 ```
 
-```{r efficiency LBR2 LBR1 vs chrom, fig.height=9, fig.width=7}
+### Panel C
+
+```{r efficiency LBR2 LBR1 vs chrom, fig.height=9, fig.width=9}
 trip_tib <- trip_tib_2000 %>% 
   filter(exp_pool %in% c("indel_LBR2Rep5_LBR1_-_-_-_64", "indel_mean_LBR2_0_64h"))
 
-chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("LAD", names(trip_tib))-1)
+chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 
 trip_tib_eff <- trip_tib %>% select(efficiency, barcode, chrom.mods.cols, plasmid) %>% spread(plasmid, efficiency) %>% na.omit() %>% mutate(exp_pool = "Efficiency_Corr")
 
@@ -192,47 +231,42 @@ CorrelationPlotMean(trip_tib_eff, "Efficiency_Corr",  c("LBR1", "LBR2") , target
 
 ```
 
-```{r efficiency LADs, fig.height=6, fig.width=10}
-ggplot(filter(trip_tib, LAD != "NA"), aes(LAD, efficiency, color = plasmid)) + 
-  geom_quasirandom(dodge.width=1) + 
-  scale_color_manual(values = c("LBR1" = "gray", "LBR2" = "black")) + 
-  theme_bw(base_size = 16)
-```
+### Panel D
 
-### Conclution
+```{r efficiency heterochrom daomins, fig.height=5, fig.width=12}
+het.domains <- c("H3K27me3_domain", 
+                 "H3K9me2_domain", 
+                 "H3K9me3_domain", 
+                 "late_replicating_domain", 
+                 "LAD")
 
-# Pathway contribution per barcode
-```{r efficiency clusters}
-ggplot(filter(trip_tib, !is.na(cluster)), aes(cluster, efficiency, color = plasmid)) + 
-  geom_quasirandom(dodge.width=1) + 
-  scale_color_manual(values = c("LBR1" = "gray", "LBR2" = "black")) + 
-  theme_bw(base_size = 16)
-```
+trip_tib_domains <- trip_tib %>% 
+  select(barcode, het.domains, plasmid, efficiency) %>%
+  filter(!is.na(LAD)) %>% 
+  gather(het.domains, key = "dom_type", value = "domain") 
 
 
-```{r efficiency heterochrom daomins, fig.height=6, fig.width=10}
-het.domains <- colnames(trip_tib)[grep("K9me3_|K9me2_|K27me3_|LAD", colnames(trip_tib))]
 
-trip_tib_domains <- trip_tib %>% select(barcode, het.domains, plasmid, efficiency) %>% filter(!is.na(LAD)) %>% gather(het.domains, key = "dom_type", value = "domain") 
-
-trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c(het.domains[grep("K27me3", het.domains)], 
-                                        het.domains[grep("K9me2", het.domains)], 
-                                        het.domains[grep("K9me3", het.domains)], 
-                                        "LAD"))
-
-trip_tib_domains <- trip_tib_domains %>% mutate(dom_type = ifelse(grepl("K9me3", dom_type), "K9me3", 
-                                                                  ifelse(grepl("K9me2", dom_type), "K9me2", 
-                                                                         ifelse(grepl("K27me3", dom_type), "K27me3", 
-                                                                                "LAD"))),
+trip_tib_domains <- trip_tib_domains %>% mutate(dom_type = ifelse(grepl("K9me3", dom_type), "H3K9me3", 
+                                                                  ifelse(grepl("K9me2", dom_type), "H3K9me2", 
+                                                                         ifelse(grepl("K27me3", dom_type), "H3K27me3",
+                                                                                ifelse(grepl("replicating", dom_type), "RepTime",
+                                                                                       "LAD")))),
                                                 domain = ifelse(grepl("iDomain|iAD", domain), "iDomain", 
                                                                 "Domain"))
+trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c("H3K9me3", "H3K9me2", "H3K27me3", "RepTime", "LAD"))
 
 levels(trip_tib_domains$dom_type)
 
-ggplot(trip_tib_domains, aes(dom_type, efficiency, color = domain)) +  geom_quasirandom(size = 1, dodge.width = 1, varwidth = TRUE) + 
-  theme_bw() + facet_wrap(. ~ plasmid) + scale_color_manual(values = c("iDomain" = "gray", "Domain" = "black"))
+ggplot(trip_tib_domains, aes(dom_type, efficiency, color = domain)) +  
+  geom_quasirandom(size = 1, dodge.width = .6, varwidth = TRUE) + 
+  theme_bw() + facet_wrap(. ~ plasmid) + 
+  scale_color_manual(values = c("iDomain" = "gray", "Domain" = "black")) +
+  stat_summary(fun.y=median, fun.ymin = median, fun.ymax = median, geom="crossbar", width = 0.5)
 
-trip_tib_domains %>% group_by(dom_type, domain, plasmid) %>% dplyr::summarise(median_eff = median(efficiency))
+trip_tib_domains %>% 
+  group_by(dom_type, domain, plasmid) %>% 
+  dplyr::summarise(median_eff = median(efficiency))
 
 trip_tib_domains %>% 
   # mutate(domain_type = paste0(domain, dom_type, sep = "_")) %>%
@@ -261,29 +295,70 @@ trip_tib_domains %>%
   mutate(fold_change = (1-Domain)/(1-iDomain))
 ```
 
+## Supplementary Figure 2
 
-# Same with all the indels
-```{r spinstatesefficiceny, fig.height=7, fig.width=12}
-spin_color <- trip_tib %>% select(spin_state, spin_color) %>% distinct(spin_state, .keep_all = T) %>% filter(!is.na(spin_state))
-spin_colors <- spin_color$spin_color
-names(spin_colors) <- spin_color$spin_state
-ggplot(filter(trip_tib, !is.na(spin_state)), aes(spin_state, efficiency, color = spin_state)) + 
-  geom_quasirandom(size = 3) + 
-  scale_color_manual(values = spin_colors) + 
-  theme_bw(base_size = 16) +
-  facet_wrap(. ~ plasmid)
+### Panel A
+```{r chip values vs domains, fig.height=10, fig.width=7}
+domains.dt <- trip_tib %>% distinct(barcode, .keep_all = TRUE) %>%
+  select(barcode, H3K27me3_domain, H3K9me2_domain, H3K9me3_domain, late_replicating_domain, LAD) %>% 
+  mutate(LAD = ifelse(grepl("iAD", LAD), "iDomain", 
+                      "Domain")) %>%
+  gather(H3K27me3_domain, H3K9me2_domain, H3K9me3_domain, late_replicating_domain, LAD, key = target, value = domain) %>% 
+  mutate(target = gsub("(.*)_domain", "\\1", target)) %>%
+  mutate(target = gsub("LAD", "LMNB1", target)) %>% 
+  as.data.table()
+
+chip.dt <- trip_tib %>%  distinct(barcode, .keep_all = TRUE) %>%
+  select(barcode, H3K27me3, H3K9me2, H3K9me3,  LMNB1, late_replicating) %>% as.data.table() 
+
+setkey(domains.dt, 'target')
+
+plot_list = lapply(domains.dt[,unique(target)], function(target){
+	data = cbind(domains.dt[target, 'domain'],
+	             chip.dt[, ..target])
+	ggplot(data, aes_string(x='domain', y=target, color='domain')) +
+		geom_quasirandom() +
+		theme_bw(base_size = 16) +
+		ggtitle(target)
+})
+
+do.call(grid.arrange, plot_list)
 ```
 
-```{r lmnb1efficiency}
-trip_tib %>% select(barcode, plasmid, efficiency, LMNB1) %>%
-  ggplot(., aes(efficiency, LMNB1))  +  
-  geom_point() +
-  geom_smooth(method= "loess") + 
-  theme_bw(base_size = 16) + 
-  stat_cor(method = "spearman", label.x = .25, label.y = .7) + 
-  facet_grid(. ~ plasmid)
+### Panel B
+```{r upset, fig.height=7, fig.width=12}
+domain_data_frame <- trip_tib_domains %>% filter(plasmid == "LBR2") %>% select(-efficiency, -plasmid) %>% spread(dom_type, domain) %>% as.data.frame()
+
+domain_data_frame[domain_data_frame=="Domain"] <- 1
+domain_data_frame[domain_data_frame=="iDomain"] <- 0
+
+domain_data_frame[, 2:6] <- sapply(domain_data_frame[2:6],as.integer)
+
+upset(domain_data_frame)
 ```
 
+### Panel C
+```{r chip clone 5, fig.height=6, fig.width=6}
+Chip.seq.data.melt <- trip_tib_2000 %>% filter(cell_line == "clone5")  %>% distinct(barcode, .keep_all = TRUE) %>% select(barcode, H3K27me3, H3K4me1, H3K9me3,H3K27ac) %>% gather(H3K27me3, H3K4me1, H3K9me3,H3K27ac, key = antibody, value = value)
+
+signal.amp.seq <- left_join(log2.sel.amp.tib,Chip.seq.data.melt, by = c("barcode", "antibody"))
+
+#Plot with free axis scales
+ggplot(signal.amp.seq, aes(value,amp.indelpcr.mean)) + geom_point() + geom_smooth(method = "lm") + facet_wrap(~ antibody, scales= "free") + ylab("log2(Input normalized indel PCR reads)") + xlab("log2(ChIPseq mean 2kb bin)") + stat_cor(method = "pearson", label.x.npc = 0, label.y.npc = 1, vjust = 0) + ggtitle("ChIP seq vs. amplicon seq signal in barcode") + theme_bw(base_size = 16)
+```
+
+
+<!-- ### Panel C -->
+<!-- ```{r spinstatesefficiceny, fig.height=7, fig.width=12} -->
+<!-- spin_color <- trip_tib %>% select(spin_state, spin_color) %>% distinct(spin_state, .keep_all = T) %>% filter(!is.na(spin_state)) -->
+<!-- spin_colors <- spin_color$spin_color -->
+<!-- names(spin_colors) <- spin_color$spin_state -->
+<!-- ggplot(filter(trip_tib, !is.na(spin_state)), aes(spin_state, efficiency, color = spin_state)) +  -->
+<!--   geom_quasirandom(size = 3) +  -->
+<!--   scale_color_manual(values = spin_colors) +  -->
+<!--   theme_bw(base_size = 16) + -->
+<!--   facet_wrap(. ~ plasmid) -->
+<!-- ``` -->
 
 # Session Info
 ```{r}

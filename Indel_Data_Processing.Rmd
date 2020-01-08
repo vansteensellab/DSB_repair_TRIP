@@ -81,20 +81,19 @@ library(ggplot2)
 library(parallel)
 library(gtools)
 library(tibble)
+
+## Select outdir
+out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
+dir.create(out.dir)
+
+in.dir.date = 20191230
+in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 ```
 
 ## Custom functions
 Functions used
 
 ```{r functions}
-SetFileName <- function(filename, initials) {
-  # Set filename with extension and initials to make filename with date integrated.
-  filename <- substitute(filename)
-  initials <- substitute(initials)
-  filename <- paste0(initials, substr(gsub("-","",Sys.time()),1,8), "_", filename)
-  filename
-}
-
 MeanExperiments <- function(mutdt) {
   # The mean of the frequency for all sequences.
   # The sum of their reads
@@ -163,7 +162,7 @@ names(df.list) <- gsub(".*?/(.*?)[.]cou.*", "\\1", file.list)
 head(names(df.list))
 # count the sample number
 n.samples <- length(df.list)
-load("/DATA/projects/DSBrepair/data/R/rs20191126_Analyis_Mapping_RSTP2_2000.RData")
+load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
 
 # Read metadata file
 metadata <- read.table("/DATA/projects/DSBrepair/config/rs20190730_metadata_Repair_TRIP.tsv", 
@@ -636,28 +635,25 @@ dim(all.mutations.trunc.dt)
 
 ```{r}
 muts <- unique(all.mutations.dt$mutation)
-indels <- sort(as.numeric(muts[-grep("ssODN|<|>", muts)]))
-indels.odn <- c(as.character(indels), "ssODN")
-muts <- unique(all.mutations.trunc.dt$mutation)
-indels <- sort(as.numeric(muts[-grep("ssODN|<|>", muts)]))
-indels.trunc.odn <- c("<-15", as.character(indels), ">3", "ssODN")
+min_indel <- min(as.numeric(muts[-grep("ssODN|<|>", muts)]))
+max_indel <- max(as.numeric(muts[-grep("ssODN|<|>", muts)]))
+indels.odn <- c(as.character(seq(min_indel, max_indel)), "ssODN")
 
+muts <- unique(all.mutations.trunc.dt$mutation)
+min_indel <- min(as.numeric(muts[-grep("ssODN|<|>", muts)]))
+max_indel <- max(as.numeric(muts[-grep("ssODN|<|>", muts)]))
+indels.trunc.odn <- c("<-15", as.character(seq(min_indel, max_indel)), ">3", "ssODN")
 
 # head(trip_tib_mut_2000)
 all.mutations.trunc.dt$mutation <- factor(all.mutations.trunc.dt$mutation, levels=indels.trunc.odn)
-all.mutations.sep.dt$mutation <- factor(all.mutations.sep.dt$mutation, levels=indels.odn)
 all.mutations.dt$mutation <- factor(all.mutations.dt$mutation, levels=indels.odn)
 ```
 
 ```{r export seperate mutations}
-setwd("/DATA/projects/DSBrepair/data/R/")
 # The mutations list that can be loaded for the indel spectra plots.
-filename <- SetFileName("mutation_frequencies_all.RData", "rs")
-save(all.mutations.sep.dt, file = filename)
-filename <- SetFileName("mutation_frequencies_trunc.RData", "rs")
+filename <- paste0(out.dir, "mutation_frequencies_trunc.RData")
 save(all.mutations.trunc.dt, file = filename)
 ```
-
 
 We now have 3 data files that we can use for subsequent analysis.
 1. The indel list of the summed experiments for the indel spectra plotting.
@@ -672,12 +668,6 @@ What we now need to do is make a bas data table with some key numbers. Which one
 - +1 / c(-7, -14, -22)
 - Freq c(-7, -14, -22)
 - Freq c(-10:-8, -6:-1)
-
-
-```{r}
-MH_less_dels <- as.character(seq(-6, -1))
-```
-
 
 # Indel proportions data frame.
 We will not calculate the +1 / -7 ratios, we will count the proportion of -22, -14 -7, +1 and +2. I want to have the total insertions, total deletions and efficiences.
@@ -724,6 +714,7 @@ reads_SSTR_NHEJ <- all.mutations.dt[mutation%in%c(1, "ssODN") , sum(count) , by=
 tib_ratios <- full_join(tib_ratios, y = reads_SSTR_NHEJ, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "reads_SSTR_NHEJ"
 
+MH_less_dels <- as.character(seq(-6, -1))
 MH_less <- all.mutations.dt[mutation%in%c(MH_less_dels), sum(ratio_indels) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = MH_less, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "MH_less"
@@ -785,11 +776,8 @@ tib_RSTP2_2000_mutations <- tib_ratios
 ## Processed data export
 The files will be saved in the processed data folder.
 ```{r export}
-# Export it for the efficiency analysis. To test potential normalisation.
-setwd("/DATA/projects/DSBrepair/data/R/")
-
 # The ratios data for the efficiency analysis
-filename <- SetFileName("total_indel_data.RData", "rs")
+filename <- paste0(out.dir, "total_indel_data.RData")
 save(tib_RSTP2_2000_mutations, file = filename)
 ```
 ### Conclusions
@@ -800,6 +788,6 @@ sessionInfo()
 getwd()
 date()
 paste("Run time: ",format(Sys.time()-Starttime))
-rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
-gc() #free up memrory and report the memory usage.
+# rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
+# gc() #free up memrory and report the memory usage.
 ```

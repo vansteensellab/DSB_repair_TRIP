@@ -39,7 +39,7 @@ knitr::opts_chunk$set(echo = TRUE)
 StartTime <-Sys.time()
 
 # 6-digit Date tag:
-Date <- substr(gsub("-","",Sys.time()),3,8)
+Date <- substr(gsub("-","",Sys.time()),1,8)
 
 # libraries:
 library(tibble)
@@ -50,19 +50,19 @@ library(dplyr)
 library(yaml)
 library(stringr)
 
+## Select outdir
+out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
+dir.create(out.dir)
+
+in.dir.date = 20191230
+in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
+
+dir.create(out.dir, showWarnings = FALSE)
 ```
 
 ### Custom functions
 Functions used thoughout this script.
 ```{r}
-SetFileName <- function(filename, initials) {
-  # Set filename with extension and initials to make filename with date integrated.
-  filename <- substitute(filename)
-  initials <- substitute(initials)
-  filename <- paste0(initials, substr(gsub("-","",Sys.time()),1,8), "_", filename)
-  filename
-}
-
 not_all_na <- function(x) {
   # function to remove NAs
   any(!is.na(x))
@@ -76,13 +76,14 @@ not_all_na <- function(x) {
 The following data exps are either from 1_ParsingQC (mapping: `rs[latestdate]_Analyis_Mapping_RSTP2_2000.txt `), 2_Preprocessing (indels and mean indels ` `) or from the chip means script. All the files are located in `~/mydata/projects/CRISPR_TRIP/20180918_TRIP_5106/indels/data/processed/`
 
 ```{r loading}
-load("/DATA/projects/DSBrepair/data/R/rs20191209_total_indel_data.RData")
-load("/DATA/projects/DSBrepair/data/R/rs20191126_Analyis_Mapping_RSTP2_2000.RData")
-load("/DATA/projects/DSBrepair/data/R/rs20191209_mutation_frequencies_trunc.RData")
-load("/DATA/projects/DSBrepair/data/R/rs20191209_mutation_frequencies_all.RData")
+
+load(paste0(in.dir, "total_indel_data.RData"))
+load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
+load(paste0(in.dir, "mutation_frequencies_trunc.RData"))
 
 # Loading and prepping the ChIP and DamID data.
 ChIP_mean_data = readRDS("/DATA/projects/DSBrepair/data/R/cl20191219_ChIP_mean_selection_chipmentation.RDS")
+ChIP_meta <- readRDS("/DATA/projects/DSBrepair/data/R/cl20191219_ChIP_meta_selection_chipmentation.RDS")
 # emsembl.seg.GRCh38 <- import("/DATA/projects/DSBrepair/data/features/homo_sapiens.GRCh38.K562.Regulatory_Build.regulatory_activity.20190329.gff")
 # state_cluster <- read.table("/DATA/projects/DSBrepair/data/R/cl20190719_pool_64_10_state.txt", col.names = c("barcode", "cluster"), stringsAsFactors = FALSE)
 
@@ -100,8 +101,11 @@ damain.files <- list.files("/home/c.leemans/mydata/projects/chip_snake/hg38/hmm/
            recursive = TRUE,
            pattern="_.*[.]gff3",
            full.names=TRUE)
+
+
 names(damain.files) = gsub('.*//(.*)/5kb/(.*).gff3', '\\1_\\2', damain.files)
-damain.files <- damain.files[grep("vdBoom2016_H3K27me3_GSM1319307|Salzberg2017_H3K9me2_ab1220|Bernstein2012_H3K9me3_ENCSR000APE", names(damain.files))]
+damain.files <- damain.files[grep("r[12]", names(damain.files), invert = TRUE)]
+damain.files <- damain.files[names(damain.files) %in% ChIP_meta$chip_name]
 
 damain.list = lapply(damain.files, import)
 ```
@@ -109,28 +113,18 @@ That's done, further with the preprossesing of the chromatin data.
 
 ```{r}
 ChIP_mean_data[pool == "clone5", ID := paste0(ID, ".B")]
+ChIP_mean_data[pool == "clone9", ID := paste0(ID, ".B")]
 chip_cast.dt = ChIP_mean_data
-
+setnames(chip_cast.dt, "ID", "barcode")
 analysis.mapped.integrations.df$end = analysis.mapped.integrations.df$start
 ```
 
-```{r}
-# # remove alternative chromosomes (not used) in emsembl.seg.GRCh38
-# emsembl.seg.GRCh38 <- emsembl.seg.GRCh38[seqnames(emsembl.seg.GRCh38) %in% c(1:22, "X")]
-# # rename sequence level emsembl.seg.GRCh38
-# chrnames <- unique(paste0("chr", seqnames(emsembl.seg.GRCh38)))
-# oldchrnames <- unique(as.character(seqnames(emsembl.seg.GRCh38)))
-# names(chrnames) <- oldchrnames
-# emsembl.seg.GRCh38 <- renameSeqlevels(emsembl.seg.GRCh38, chrnames)
-```
-
-
 ```{r damid}
-# DamID LAD calling loading and processing
 rstp2.gr <- makeGRangesFromDataFrame(analysis.mapped.integrations.df, keep.extra.columns = TRUE)
-ovl <- findOverlaps(rstp2.gr, LAD.HMM.gr)
 
+# DamID LAD calling loading and processing
 # overlaps
+ovl <- findOverlaps(rstp2.gr, LAD.HMM.gr)
 mcols(rstp2.gr)$domain_LAD <- NA
 mcols(rstp2.gr)$domain_LAD[queryHits(ovl)] <- mcols(LAD.HMM.gr)$name[subjectHits(ovl)]
 
@@ -145,42 +139,16 @@ mcols(rstp2.gr)$spin_state <- NA
 mcols(rstp2.gr)$spin_state[queryHits(ovl)] <- mcols(spin_state)$name[subjectHits(ovl)]
 mcols(rstp2.gr)$spin_color[queryHits(ovl)] <- mcols(spin_state)$itemRgb[subjectHits(ovl)]
 
-# Chrom states
-# ovl <- findOverlaps(rstp2.gr, emsembl.seg.GRCh38)
-# mcols(rstp2.gr)$type <- NA
-# mcols(rstp2.gr)$type[queryHits(ovl)]  <-
-#   as.character(mcols(emsembl.seg.GRCh38)$type[subjectHits(ovl)])
-# mcols(rstp2.gr)$activity <- NA
-# mcols(rstp2.gr)$activity[queryHits(ovl)] <- mcols(emsembl.seg.GRCh38)$activity[subjectHits(ovl)]
-#
-# nearestovl <- nearest(rstp2.gr, emsembl.seg.GRCh38)
-# mcols(rstp2.gr)$nearest_type <- NA
-# mcols(rstp2.gr)$nearest_type  <-
-#   mcols(emsembl.seg.GRCh38)$type[nearestovl]
-# mcols(rstp2.gr)$nearest_activity <- NA
-# mcols(rstp2.gr)$nearest_activity <-
-#   mcols(emsembl.seg.GRCh38)$activity[nearestovl]
-
-# ChIP Domains
-df = data.frame()
-ovl.list <- lapply(damain.list, y = rstp2.gr, function(x, y) {
-ovl <- findOverlaps(y, x)
-mcols(y)$domain <- NA
-mcols(y)$domain[queryHits(ovl)] <- mcols(x)$domain[subjectHits(ovl)]
-# df <- mcols(y)$domain
-})
-
-ChIP.domains.dt = do.call(cbind, c(ovl.list))
-
-
 # Back to dataframe
 rstp2.df <- GenomicRanges::as.data.frame(rstp2.gr, stringsAsFactors = FALSE)
-domains.dt <- data.table(rstp2.df[, c("barcode", "domain_LAD", "spin_state",  "spin_color",
-                                      "DNAse_broad", "type", "activity",
-                                      "nearest_type", "nearest_activity")])
-domains.dt = cbind(domains.dt, ChIP.domains.dt)
-setnames(domains.dt, "barcode", "ID")
-setkey(domains.dt, 'ID')
+domains.dt <- data.table(rstp2.df[, c("barcode",
+                                      "domain_LAD", 
+                                      "spin_state", 
+                                      "spin_color",
+                                      "DNAse_broad")])
+
+# setnames(domains.dt, "barcode", "ID")
+setkey(domains.dt, "barcode")
 
 
 ```
@@ -203,10 +171,45 @@ rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain'
 
 rep.dt[target=='repliseq',target:='late_replicating']
 
-domains.dt = rep.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
+chip.domains.dt = rep.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
                                         'Domain', 'iDomain')),
                     by=c('target', 'barcode')]
 
+file.spin.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(SPIN.*).txt'))
+names(file.spin.dt) = c('file', 'target')
+spin.dt = file.spin.dt[!is.na(file),
+                 fread(file, col.names=c('barcode', 'domain', 'distance')),
+				 by=c('target')]
+
+spin.domains.dt = spin.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
+                                        'Domain', 'iDomain')),
+                    by=c('target', 'barcode')]
+
+# Ruben addition
+## temp add clone barcodes
+clone_file_list = list.files(near_dir, pattern='clone[59]', full.names=T)
+
+clone_file.dt = data.table(str_match(clone_file_list, '.*/clone(.*)-r([0-9]).txt'))
+names(clone_file.dt) = c('file', 'target', 'rep')
+
+clone_rep.dt = clone_file.dt[!is.na(file),
+                             fread(file, col.names=c('barcode', 'domain', 'distance')),
+                             by=c('target', 'rep')]
+clone_rep.dt[, barcode := paste0(barcode, ".B")]
+clone_rep.dt[, target := gsub("[59]_(.*)", "\\1", target)]
+
+clone_rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
+
+clone_rep.dt[target=='repliseq',target:='late_replicating']
+
+clone_chip.domains.dt = clone_rep.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
+                                                         'Domain', 'iDomain')),
+                                     by=c('target', 'barcode')]
+
+chip.domains.dt = rbind(clone_chip.domains.dt, chip.domains.dt, spin.domains.dt) %>% distinct(barcode, target, .keep_all = TRUE)
+
+chip.domains.dt = mutate(chip.domains.dt, target = paste0(target, "_domain"))
+chip.domains.cast.dt = spread(chip.domains.dt, target, domain)
 ```
 
 <!-- end Christ -->
@@ -214,12 +217,13 @@ domains.dt = rep.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0
 
 
 ```{r data merge}
-chip_domains.dt = chip_cast.dt[domains.dt, on = "ID"]
+chip_domains.dt = chip_cast.dt[chip.domains.cast.dt, on = "barcode"]
+chip_domains.dt = chip_domains.dt[domains.dt, on = "barcode"]
 
-setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "Bernstein2012_H3K9me3_ENCSR000APE", "Salzberg2017_H3K9me2_ab1220", "vdBoom2016_H3K27me3_GSM1319307"), c("LAD", "DHS_domain", "H3K9me3_domain", "H3K9me2_domain", "H3K27me3_domain"))
+setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "SPIN-100kb_domain", "SPIN-10state_domain"), 
+         c("LAD", "DHS_domain", "SPIN-100kb", "SPIN-10state"))
 
-trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>%
-  left_join(state_cluster, by = c("barcode")) %>%
+trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode", "cell_line" = "pool")) %>%
   as_tibble()
 trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
 ```
@@ -229,52 +233,23 @@ trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
 # Conclusions
 ```{r}
 
-trip_tib_1000 <- trip_tib %>% filter(binsize == 1000) %>% select_if(not_all_na)
+# trip_tib_1000 <- trip_tib %>% filter(binsize == 1000) %>% select_if(not_all_na)
 trip_tib_2000 <- trip_tib %>% filter(binsize == 2000) %>% select_if(not_all_na)
 
 # Same for the mutations plotting file
-trip_tib_mut = left_join(all.mutations.trunc.dt, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>%
-  left_join(state_cluster, by = c("barcode")) %>% as_tibble()
+trip_tib_mut = left_join(all.mutations.trunc.dt, chip_domains.dt, by = c("barcode", "cell_line" = "pool")) %>% as_tibble()
 trip_tib_mut <- trip_tib_mut[!is.na(trip_tib_mut$exp), ]
-trip_tib_mut_1000 <- trip_tib_mut %>% filter(binsize == 1000) %>% select_if(not_all_na)
+# trip_tib_mut_1000 <- trip_tib_mut %>% filter(binsize == 1000) %>% select_if(not_all_na)
 trip_tib_mut_2000 <- trip_tib_mut %>% filter(binsize == 2000) %>% select_if(not_all_na)
-
-# Same for the mutations plotting file
-trip_tib_mut_all = left_join(all.mutations.sep.dt, chip_domains.dt, by = c("barcode" = "ID", "cell_line" = "pool")) %>%
-  left_join(state_cluster, by = c("barcode")) %>% as_tibble()
-trip_tib_mut_all <- trip_tib_mut_all[!is.na(trip_tib_mut_all$exp), ]
-trip_tib_mut_all_1000 <- trip_tib_mut_all %>% filter(binsize == 1000) %>% select_if(not_all_na)
-trip_tib_mut_all_2000 <- trip_tib_mut_all %>% filter(binsize == 2000) %>% select_if(not_all_na)
 
 ## Export this data table
 # Ratios
-setwd("/DATA/projects/DSBrepair/data/R/")
-# The mutations list that can be loaded for the indel spectra plots.
-filename <- SetFileName("RSTP2_IndelRatios_Chromatin_1kb.RData", "rs")
-save(trip_tib_1000, file = filename)
-save(trip_tib_1000, file = "RSTP2_IndelRatios_Chromatin_1kb.RData")
-
-filename <- SetFileName("RSTP2_IndelRatios_Chromatin_2kb.RData", "rs")
-save(trip_tib_2000, file = filename)
-save(trip_tib_2000, file = "RSTP2_IndelRatios_Chromatin_2kb.RData")
+# save(trip_tib_1000, file = paste0(out.dir, "RSTP2_IndelRatios_Chromatin_1kb.RData"))
+save(trip_tib_2000, file = paste0(out.dir, "RSTP2_IndelRatios_Chromatin_2kb.RData"))
 
 # Mutations truncated
-filename <- SetFileName("RSTP2_Indel_Chromatin_1kb.RData", "rs")
-save(trip_tib_mut_1000, file = filename)
-save(trip_tib_mut_1000, file = "RSTP2_Indel_Chromatin_1kb.RData")
-
-filename <- SetFileName("RSTP2_Indel_Chromatin_2kb.RData", "rs")
-save(trip_tib_mut_2000, file = filename)
-save(trip_tib_mut_2000, file = "RSTP2_Indel_Chromatin_2kb.RData")
-
-# Mutations
-filename <- SetFileName("RSTP2_Indel_Chromatin_1kb.RData", "rs")
-save(trip_tib_mut_all_1000, file = filename)
-save(trip_tib_mut_all_1000, file = "RSTP2_Indel_Chromatin_1kb_all.RData")
-
-filename <- SetFileName("RSTP2_Indel_Chromatin_2kb.RData", "rs")
-save(trip_tib_mut_all_2000, file = filename)
-save(trip_tib_mut_all_2000, file = "RSTP2_Indel_Chromatin_2kb_all.RData")
+# save(trip_tib_mut_1000, file = paste0(out.dir, "RSTP2_Indel_Chromatin_1kb.RData"))
+save(trip_tib_mut_2000, file = paste0(out.dir, "RSTP2_Indel_Chromatin_2kb.RData"))
 ```
 
 # Session Info
