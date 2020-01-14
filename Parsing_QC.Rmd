@@ -156,7 +156,7 @@ names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table",
 list2env(mapping.list ,.GlobalEnv)
 
 # Load metadata
-metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200107_metadata_Repair_TRIP.tsv", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
+metadata <- read.table("/DATA/projects/DSBrepair/config/cl20200108_metadata_Repair_TRIP.tsv", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 ## Some data pre-processing  
@@ -316,14 +316,13 @@ nrow(dupli.df)
 #few in the others, we can retrieve the barcodes from this list to remove them from the mapping
 # list. This is the list: 
 dupli.df[ , c(1:6)]
+# What we see it that most are duplicated sites due to a small barcode mismatch.
 
-
-# pick out the barcodes with less than 20 reads. They are the wrongs ones. 
+# Pick out the barcodes with less than 20 reads. They are the wrongs ones. 
 # (Very similar barcodes, that weren"t filtered out by starcode)
-dupli.bc.vec <- as.character(dupli.df[dupli.df$total_mapped<20, ]$barcode)
+dupli.bc.vec <- dupli.df %>% filter(total_mapped < 20) %>% pull(barcode)
 
 dupli.df[!dupli.df$barcode %in% dupli.bc.vec,  c(1:6)] %>% arrange(barcode)
-dupli.df
 # there is one last duplicate in there, but has a good amount of reads, 
 # let"s keep it as it may have many indel reads too.
 filtered_mapping.df <- filtered_mapping.df[!filtered_mapping.df$barcode %in% 
@@ -332,20 +331,14 @@ dupli.vec.test <- unique(filtered_mapping.df[duplicated(filtered_mapping.df$star
                                                         fromLast=TRUE), 
                                              "start_pos" ])
 length(dupli.vec.test)
-dupli.vec.test
+
 
 # Are most of these duplicated the ones from the cells in both pools? 
-table(dupli.vec.test %in% 
-        filtered_mapping.df[filtered_mapping.df$barcode %in% 
-                                                bothpools.vec, ]$start_pos)
-
-filtered_mapping.df %>% filter(start_pos %in% dupli.vec.test[!dupli.vec.test %in% 
-        filtered_mapping.df[filtered_mapping.df$barcode %in% 
-                                                bothpools.vec, ]$start_pos])
-
+filtered_mapping.df %>% filter(start_pos %in% dupli.vec.test & 
+                                 !barcode %in% bothpools.vec)
 ```
 
-Yes, the data looks good like this. There are only 3 reads that are mapped exactly to the same location, two in A & B with different barcodes, and one with similar looking BC only in A due to two differnt sequences (maybe a snp at the GAT[A/C] where the sequence is cut).
+Yes, the data looks good like this. There are only 6 barcodes that are mapped exactly to the same location (3), two in A & B with different barcodes, and one with similar looking BC only in A due to two differnt sequences (maybe a snp at the GAT[A/C] where the sequence is cut).
 
 We end up with this many integrations (taking into account only read 2):
 ```{r}

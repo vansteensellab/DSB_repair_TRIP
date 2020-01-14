@@ -226,7 +226,6 @@ lims = 1
 
 colores <- c("LBR1" = "gray", "LBR2" = "black")
 
-setwd("/DATA/projects/DSBrepair/scratch/")
 CorrelationPlotMean(trip_tib_eff, "Efficiency_Corr",  c("LBR1", "LBR2") , targets = eff.hist.corr)
 
 ```

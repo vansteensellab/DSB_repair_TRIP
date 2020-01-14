@@ -467,8 +467,27 @@ p <- ggplot(filter(trip_tib_mut, barcode %in% barcodeset, mutation != "ssODN"),
 p + facet_wrap( ~ barcode, ncol = 2)
 ```
 
-
 ### Panel B
+```{r pathway contribution, fig.height=6, fig.width=10}
+pathway_distribution <- trip_tib %>% filter(exp_pool == "indel_mean_LBR2_0_64h") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>% arrange(desc(ratios))
+barcode_order <- pathway_distribution %>% filter(pathway == "NHEJ")  %>% arrange(desc(ratios)) %>% select(barcode)
+
+pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")
+``` 
+
+### Panel C
 ```{r ratio and pathway distribution, fig.height=3, fig.width=4}
 ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) + 
   geom_density(fill = "black") + 
@@ -484,7 +503,7 @@ ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) +
 #   scale_fill_manual("legend", values = colores)
 ```
 
-### Panel C
+### Panel D
 ```{r pathways vs chrom, fig.height=8, fig.width=9}
 chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 

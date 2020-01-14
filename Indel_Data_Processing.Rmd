@@ -86,7 +86,7 @@ library(tibble)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20191230
+in.dir.date = 20200114
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 ```
 
@@ -165,7 +165,7 @@ n.samples <- length(df.list)
 load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
 
 # Read metadata file
-metadata <- read.table("/DATA/projects/DSBrepair/config/rs20190730_metadata_Repair_TRIP.tsv", 
+metadata <- read.table("/DATA/projects/DSBrepair/config/cl20200108_metadata_Repair_TRIP.tsv", 
                        header = TRUE, 
                        stringsAsFactors = FALSE) %>% 
   select(-file, -run, -GCF, -index_length) %>%
@@ -580,7 +580,7 @@ setcolorder(all.mutations.dt, c("exp", "barcode", "nexp", "no","exp_pool",
 all.mutations.dt[, color := "other"]
 all.mutations.dt[mutation == 0, color := "wt"]
 all.mutations.dt[mutation == 1, color := "NHEJ"]
-all.mutations.dt[mutation %in% c(-7, -22, -14), color := "MMEJ"]
+all.mutations.dt[mutation == -7, color := "MMEJ"]
 all.mutations.dt[mutation == "ssODN", color := "SSTR"]
 
 # same for LBR1
@@ -660,22 +660,13 @@ We now have 3 data files that we can use for subsequent analysis.
 2. The indel data table of the read counts of the summed experiments.
 3. The indel data table of the percentaage/frequencies of each indel of the summed experiments.
 
-What we now need to do is make a bas data table with some key numbers. Which ones do we want?
-- Efficiency
-- Total insertion fequency
-- Total deletion frequency
-- +1 / -7 ratio
-- +1 / c(-7, -14, -22)
-- Freq c(-7, -14, -22)
-- Freq c(-10:-8, -6:-1)
-
 # Indel proportions data frame.
-We will not calculate the +1 / -7 ratios, we will count the proportion of -22, -14 -7, +1 and +2. I want to have the total insertions, total deletions and efficiences.
+We will not calculate the +1 / -7 ratios, we will count the proportion of "-7" / ("-7"  + "+1"). I want to have the total insertions, total deletions and efficiences.
 ```{r calculate_ratios}
 # Make all the sums, pct and ratios :
 tib_ratios <-  as_tibble(all.mutations.dt)
 
-MMEJ <- all.mutations.dt[mutation%in%c(-7,-14,-22), sum(ratio_indels) , by=c("barcode","exp")]
+MMEJ <- all.mutations.dt[mutation == -7, sum(ratio_indels) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = MMEJ, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "MMEJ"
 tib_ratios[is.na(tib_ratios$MMEJ), "MMEJ"] = 0
@@ -702,28 +693,19 @@ reads_SSTR <- all.mutations.dt[mutation == "ssODN" , sum(count) , by=c("barcode"
 tib_ratios <- full_join(tib_ratios, y = reads_SSTR, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "reads_SSTR"
 
-reads_NHEJ_MMEJ <- all.mutations.dt[mutation%in%c(1, -7,-14,-22) , sum(count) , by=c("barcode","exp")]
+reads_NHEJ_MMEJ <- all.mutations.dt[mutation %in% c(1, -7) , sum(count) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = reads_NHEJ_MMEJ, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "reads_NHEJ_MMEJ"
 
-reads_SSTR_MMEJ <- all.mutations.dt[mutation%in%c("ssODN", -7,-14,-22) , sum(count) , by=c("barcode","exp")]
+reads_SSTR_MMEJ <- all.mutations.dt[mutation %in% c("ssODN", -7) , sum(count) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = reads_SSTR_MMEJ, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "reads_SSTR_MMEJ"
 
-reads_SSTR_NHEJ <- all.mutations.dt[mutation%in%c(1, "ssODN") , sum(count) , by=c("barcode","exp")]
+reads_SSTR_NHEJ <- all.mutations.dt[mutation %in% c(1, "ssODN") , sum(count) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = reads_SSTR_NHEJ, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "reads_SSTR_NHEJ"
 
-MH_less_dels <- as.character(seq(-6, -1))
-MH_less <- all.mutations.dt[mutation%in%c(MH_less_dels), sum(ratio_indels) , by=c("barcode","exp")]
-tib_ratios <- full_join(tib_ratios, y = MH_less, by = c("barcode","exp"))
-names(tib_ratios)[ncol(tib_ratios)] <- "MH_less"
-
-LigIV <- all.mutations.dt[mutation%in%c(MH_less_dels, 1, 2), sum(ratio_indels) , by=c("barcode","exp")]
-tib_ratios <- full_join(tib_ratios, y = LigIV, by = c("barcode","exp"))
-names(tib_ratios)[ncol(tib_ratios)] <- "LigIV"
-
-other_indels <- all.mutations.dt[!mutation%in%c(0, 1, -7,-14,-22, "ssODN"), sum(ratio_indels) , by=c("barcode","exp")]
+other_indels <- all.mutations.dt[!mutation%in%c(0, 1, -7, "ssODN"), sum(ratio_indels) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = other_indels, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "other_indels"
 
@@ -731,11 +713,11 @@ efficiency <- all.mutations.dt[mutation == 0, 1 - freq , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = efficiency, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "efficiency"
 
-insertions <- all.mutations.dt[mutation%in%seq(-120, -1), sum(ratio_indels) , by=c("barcode","exp")]
+insertions <- all.mutations.dt[mutation%in%seq(1, 15), sum(ratio_indels) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = insertions, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "insertions"
 
-deletions <- all.mutations.dt[mutation%in%seq(1, 15), sum(ratio_indels) , by=c("barcode","exp")]
+deletions <- all.mutations.dt[mutation%in%seq(-120, -1), sum(ratio_indels) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = deletions, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "deletions"
 
@@ -763,8 +745,6 @@ tib_ratios
 
 tib_ratios = tib_ratios %>% mutate(NHEJ_MMEJ = NHEJ/MMEJ,
                                    MMEJ_NHEJ = MMEJ/NHEJ,
-                                   LigIV_MMEJ = LigIV/MMEJ,
-                                   MMEJ_LigIV = MMEJ/LigIV,
                                    ins_del = insertions/deletions,
                                    MMEJ_MMEJNHEJ = MMEJ/(NHEJ+MMEJ),
                                    SSTR_MMEJSSTR = SSTR/(SSTR+MMEJ),

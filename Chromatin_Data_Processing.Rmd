@@ -54,7 +54,7 @@ library(stringr)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20191230
+in.dir.date = 20200108
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 dir.create(out.dir, showWarnings = FALSE)
@@ -160,12 +160,12 @@ near_dir = '/DATA/projects/DSBrepair/data/tracks_20190711/nearest/'
 
 file_list = list.files(near_dir, pattern='20180918.RSTP2', full.names=T)
 
-file.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(.*)-r([0-9]).txt'))
-names(file.dt) = c('file', 'target', 'rep')
+file.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(.*).txt'))
+names(file.dt) = c('file', 'target')
 
 rep.dt = file.dt[!is.na(file),
                  fread(file, col.names=c('barcode', 'domain', 'distance')),
-				 by=c('target', 'rep')]
+				 by=c('target')]
 
 rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
 
