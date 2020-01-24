@@ -54,7 +54,7 @@ library(stringr)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20200108
+in.dir.date = 20200124
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 dir.create(out.dir, showWarnings = FALSE)
@@ -82,8 +82,8 @@ load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
 load(paste0(in.dir, "mutation_frequencies_trunc.RData"))
 
 # Loading and prepping the ChIP and DamID data.
-ChIP_mean_data = readRDS("/DATA/projects/DSBrepair/data/R/cl20191219_ChIP_mean_selection_chipmentation.RDS")
-ChIP_meta <- readRDS("/DATA/projects/DSBrepair/data/R/cl20191219_ChIP_meta_selection_chipmentation.RDS")
+ChIP_mean_data = readRDS("/DATA/projects/DSBrepair/data/R/cl20200108_ChIP_mean_selection.RDS")
+ChIP_meta <- readRDS("/DATA/projects/DSBrepair/data/R/cl20200108_ChIP_meta_selection.RDS")
 # emsembl.seg.GRCh38 <- import("/DATA/projects/DSBrepair/data/features/homo_sapiens.GRCh38.K562.Regulatory_Build.regulatory_activity.20190329.gff")
 # state_cluster <- read.table("/DATA/projects/DSBrepair/data/R/cl20190719_pool_64_10_state.txt", col.names = c("barcode", "cluster"), stringsAsFactors = FALSE)
 
@@ -142,8 +142,8 @@ mcols(rstp2.gr)$spin_color[queryHits(ovl)] <- mcols(spin_state)$itemRgb[subjectH
 # Back to dataframe
 rstp2.df <- GenomicRanges::as.data.frame(rstp2.gr, stringsAsFactors = FALSE)
 domains.dt <- data.table(rstp2.df[, c("barcode",
-                                      "domain_LAD", 
-                                      "spin_state", 
+                                      "domain_LAD",
+                                      "spin_state",
                                       "spin_color",
                                       "DNAse_broad")])
 
@@ -161,19 +161,20 @@ near_dir = '/DATA/projects/DSBrepair/data/tracks_20190711/nearest/'
 file_list = list.files(near_dir, pattern='20180918.RSTP2', full.names=T)
 
 file.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(.*).txt'))
+
 names(file.dt) = c('file', 'target')
 
 rep.dt = file.dt[!is.na(file),
                  fread(file, col.names=c('barcode', 'domain', 'distance')),
 				 by=c('target')]
-
-rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
-
+#
+# rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
+#
 rep.dt[target=='repliseq',target:='late_replicating']
 
-chip.domains.dt = rep.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
-                                        'Domain', 'iDomain')),
-                    by=c('target', 'barcode')]
+chip.domains.dt = rep.dt[!target %in% c('SPIN-10state', 'SPIN-100kb'), ]
+
+chip.domains.dt[distance > 0, domain:='iDomain']
 
 file.spin.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(SPIN.*).txt'))
 names(file.spin.dt) = c('file', 'target')
@@ -181,35 +182,38 @@ spin.dt = file.spin.dt[!is.na(file),
                  fread(file, col.names=c('barcode', 'domain', 'distance')),
 				 by=c('target')]
 
-spin.domains.dt = spin.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
-                                        'Domain', 'iDomain')),
-                    by=c('target', 'barcode')]
-
 # Ruben addition
 ## temp add clone barcodes
 clone_file_list = list.files(near_dir, pattern='clone[59]', full.names=T)
 
-clone_file.dt = data.table(str_match(clone_file_list, '.*/clone(.*)-r([0-9]).txt'))
-names(clone_file.dt) = c('file', 'target', 'rep')
+clone_file.dt = data.table(str_match(clone_file_list, '.*/clone(.*).txt'))
+names(clone_file.dt) = c('file', 'target')
 
 clone_rep.dt = clone_file.dt[!is.na(file),
                              fread(file, col.names=c('barcode', 'domain', 'distance')),
-                             by=c('target', 'rep')]
+                             by=c('target')]
 clone_rep.dt[, barcode := paste0(barcode, ".B")]
 clone_rep.dt[, target := gsub("[59]_(.*)", "\\1", target)]
 
-clone_rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
+# clone_rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
 
 clone_rep.dt[target=='repliseq',target:='late_replicating']
 
-clone_chip.domains.dt = clone_rep.dt[,list(domain=ifelse(all(domain=='Domain') & sum(distance)==0,
-                                                         'Domain', 'iDomain')),
-                                     by=c('target', 'barcode')]
 
-chip.domains.dt = rbind(clone_chip.domains.dt, chip.domains.dt, spin.domains.dt) %>% distinct(barcode, target, .keep_all = TRUE)
+clone_chip.domains.dt = clone_rep.dt[!target %in% c('SPIN-10state', 'SPIN-100kb'), ]
 
-chip.domains.dt = mutate(chip.domains.dt, target = paste0(target, "_domain"))
-chip.domains.cast.dt = spread(chip.domains.dt, target, domain)
+clone_chip.domains.dt[distance > 0, domain:='iDomain']
+
+chip.domains.dt = rbind(clone_chip.domains.dt,
+                        chip.domains.dt, spin.dt) %>%
+                        distinct(barcode, target, .keep_all = TRUE)
+
+chip.domains.dt = mutate(chip.domains.dt, target = paste0(target, "_domain")) %>% 
+  dplyr::select(-distance) %>%
+  data.table()
+chip.domains.dt[domain == "iAD", domain := 'iDomain']
+chip.domains.dt[domain == "AD", domain := 'Domain']
+chip.domains.cast.dt = tidyr::spread(chip.domains.dt, target, domain)
 ```
 
 <!-- end Christ -->
@@ -220,10 +224,13 @@ chip.domains.cast.dt = spread(chip.domains.dt, target, domain)
 chip_domains.dt = chip_cast.dt[chip.domains.cast.dt, on = "barcode"]
 chip_domains.dt = chip_domains.dt[domains.dt, on = "barcode"]
 
-setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "SPIN-100kb_domain", "SPIN-10state_domain"), 
+setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "SPIN-100kb_domain", "SPIN-10state_domain"),
          c("LAD", "DHS_domain", "SPIN-100kb", "SPIN-10state"))
 
-trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode", "cell_line" = "pool")) %>%
+chip_domains.dt[, pool := gsub("20180918.RSTP2", "RSTP2_2000", pool, perl = TRUE)]
+chip_domains.dt[, pool := gsub("clone5", "RSTP2_clone5", pool, perl = TRUE)]
+
+trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode", "cell_line" = "pool")) %>% 
   as_tibble()
 trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
 ```
