@@ -156,7 +156,7 @@ names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table",
 list2env(mapping.list ,.GlobalEnv)
 
 # Load metadata
-metadata <- read.table("/DATA/projects/DSBrepair/config/cl20200108_metadata_Repair_TRIP.tsv", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200123_metadata_Repair_TRIP_tmpb.txt", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 ## Some data pre-processing  
@@ -243,7 +243,7 @@ filtered_mapping.df <- mapping.df[mapping.df$mapq_1 > 10 &
                            mapping.df$total_mapped > 3 & 
                            mapping.df$freq1 > 0.70 & 
                            mapping.df$freq2 < 0.10, ]
-filtered_mapping.df <- filtered_mapping.df %>% select(-mapq_sum2, -reads2, -mapq_2, -freq2) # Remove mapq_sum, reads2, mapq2, freq2
+filtered_mapping.df <- filtered_mapping.df %>% dplyr::select(-mapq_sum2, -reads2, -mapq_2, -freq2) # Remove mapq_sum, reads2, mapq2, freq2
 dim(filtered_mapping.df)
 head(filtered_mapping.df)
 filtered_mapping.df <- filtered_mapping.df[with(filtered_mapping.df, order(start_pos, -mapq_1)), ]
@@ -367,7 +367,7 @@ tib_distance_mapping <- as_tibble(distance_mapping.df[distance_mapping.df$barcod
                                                         FandR_reads.vec, ])
 
 tib_dist <- tib_distance_mapping %>% 
-  select(.id, barcode, start_pos) %>% 
+  dplyr::select(.id, barcode, start_pos) %>% 
   group_by(barcode) %>% 
   dplyr::summarise(dist = diff(start_pos))
 
