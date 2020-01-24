@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20191230
+in.dir.date = 20200121
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -113,7 +113,7 @@ clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2',
 
 ```
 
-### Custom functions
+## Custom functions
 Functions used thoughout this script.
 ```{r, message=FALSE, warnings=FALSE}
 SetFileName <- function(filename, initials) {
@@ -390,6 +390,177 @@ cor_test <- function(y, X, left, right){
                 feature_group=feature_group))
 }
 
+
+get_combinations <- function(domain_vec){
+    n_domain = length(domain_vec)
+    get_ivec <-function (last_x, n_domain){
+    	if (last_x < n_domain){
+    		i_vec = c(0, c((last_x+1):n_domain))
+    	} else{
+    		i_vec = c(0)
+    	}
+    }
+
+    combine <- function(x_new, x_vec, n_domain){
+        new_vec = c(x_vec, x_new)
+        if (length(new_vec)==n_domain){
+            return(new_vec)
+        } else {
+            i_vec = get_ivec(max(new_vec), n_domain)
+            x_list = lapply(i_vec, combine, x_vec=new_vec,
+                            n_domain=n_domain)
+            return(do.call(rbind, x_list))
+        }
+    }
+
+    comb_list = lapply(c(0:n_domain), combine, x_vec=c(), n_domain=n_domain)
+
+    comb = do.call(rbind, comb_list)
+    comb_df = unique(t(apply(comb, 1, function(x){x[order(x)]})))
+
+    name_list = apply(comb_df, 1, function(x){
+    	name = paste(domain_vec[x], collapse='-')
+    	if (name == ''){
+    		name = 'iDomain'
+    	}
+    	return(name)
+    })
+
+    opt_list = lapply(domain_vec, function(d){
+    	 apply(comb_df, 1, function(x){
+    		opt = domain_vec[x]
+    		return(d%in%opt)
+    	})
+    })
+
+    opt_df = do.call(cbind, opt_list)
+    colnames(opt_df) = domain_vec
+    rownames(opt_df) = name_list
+
+    return(opt_df)
+}
+
+plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_count=Inf){
+
+    opt_melt = reshape2::melt(opt_df)
+    colnames(opt_melt) = c('group', 'domain', 'is_in')
+
+    opt_melt$is_in = ifelse(opt_melt$is_in, 'in', 'out')
+    opt_melt$domain = factor(opt_melt$domain, levels=domains)
+
+
+    group_list = lapply(rownames(opt_df), function(opt_name){
+    	opt = opt_df[opt_name, ]
+    	in_vec = domains[opt]
+    	out_vec = domains[!opt]
+
+    	in_sum = rowSums(indel.dt[,..in_vec])
+    	out_sum = rowSums(indel.dt[,..out_vec])
+    	if (length(in_vec)==0){
+    		in_group = which(out_sum == 0)
+    	} else if (length(out_vec) == 0){
+    		in_group = which(in_sum==length(in_vec))
+    	} else  {
+    		in_group = which(in_sum == length(in_vec) & out_sum==0)
+    	}
+    	return(in_group)
+    })
+
+    names(group_list) = rownames(opt_df)
+    for (opt_name in names(group_list)){
+    	i_vec = group_list[[opt_name]]
+    	indel.dt[i_vec, group := opt_name]
+    }
+    group_count_df = data.frame(indel.dt[,table(group)])
+    group_count_df = group_count_df[order(match(group_count_df$group, rownames(opt_df))),]
+    group_count_sel = group_count_df[group_count_df$Freq>=min_count,]
+    group_count_sel = group_count_sel[group_count_sel$Freq<=max_count,]
+    group_levels =  group_count_sel$group
+    opt_sel = opt_melt[opt_melt$group %in% group_levels, ]
+
+    opt_sel$group = factor(opt_sel$group, levels=group_levels)
+
+    indel_selection = indel.dt[group%in%group_levels, ]
+    indel_selection[,group:=factor(group, levels=group_levels)]
+
+    # wilcox_list = lapply(group_levels[group_levels!='iDomain'],
+    #                      function(g){
+    #                          x = indel_selection[group==g, y_name, with=F]
+    #                          y = indel_selection[group=='iDomain', y_name,
+    #                                              with=F]
+    #                          wilcox.test(unlist(x),unlist(y))
+    #                      })
+
+    group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
+
+    count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
+                            geom_label() +
+                            theme_void()
+
+
+
+    dots = ggplot(opt_sel, aes(x=group, y=domain, color=is_in)) +
+    	geom_point(size=2) +
+    	geom_line(data=opt_sel[opt_sel$is_in=='in',], aes(group=group)) +
+    	theme_bw() +
+    	scale_color_manual(values=c('in'='black', 'out'='grey70')) +
+    	guides(color=FALSE)  +
+    	geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    			   lwd=0.5, colour="grey90") +
+    	theme(axis.title=element_blank(),
+    		  axis.text=element_blank(),
+    		  axis.ticks=element_blank(),
+    		  panel.grid.major = element_blank())
+
+    symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
+                  symbols = c("****", "***", "**", "*", ""))
+
+    beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
+    			  geom_quasirandom(width=0.3) +
+    			  theme_bw() +
+    			  geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    			             lwd=0.5, colour="grey90") +
+                  stat_summary(fun.y=median, fun.ymin = median,
+                               fun.ymax = median, geom="crossbar", width = 0.5,
+                               color='red') +
+                  stat_compare_means(aes(label = ..p.signif..),
+                                     symnum.args = symnum,
+                                     ref.group='iDomain') +
+    			  theme(axis.title=element_blank(),
+    			        axis.text.x=element_blank(),
+      				    panel.grid.major.x = element_blank(),
+    				    axis.ticks.x=element_blank())
+
+    count = data.frame(domain=gsub('_domain', '', domains),
+    	               count=colSums(indel.dt[,..domains], na.rm=T))
+
+    count$domain = factor(count$domain, levels=domain_levels)
+
+
+    histogram = ggplot(count, aes(x=1, y=domain, label = count)) +
+    				geom_label() +
+    				theme_bw() +
+    				theme(plot.background = element_blank(),
+        				  panel.grid.major = element_blank(),
+        				  panel.grid.minor = element_blank(),
+        				  panel.border = element_blank(),
+    					  axis.title=element_blank(),
+    	  			      axis.text.x=element_blank(),
+    	  				  axis.ticks=element_blank())
+
+    empty = ggplot(data=data.frame(1,1),aes(x=1,y=1)) +
+                geom_point() +
+                theme_void()
+
+    count_beeswarm = plot_grid(beeswarm, count_plot, ncol=1, rel_heights=c(20,1),
+                               align='v', axis='lr')
+    return(plot_grid(empty, beeswarm, empty, count_plot,
+                     histogram, dots, nrow=3,
+                     rel_widths=c(1,10), rel_heights=c(15,1,5), align='vh',
+                     axis='tlbr'))
+}
+
+
 ```
 
 # Data import
@@ -418,15 +589,15 @@ mean_trip_tib_2000 <- trip_tib_2000 %>%
 mean_trip_tib_2000$pathway <- factor(mean_trip_tib_2000$pathway, levels=c("other_indels", "MMEJ", "NHEJ"))
 mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
 ```
-# Figures
-## Main Figures
-### Panel A
+
+# Main Figure 5
+## Panel 5A
 
 Panel A is the scheme of the ssODN. That has been made. 
 Add loading here I guess. 
 
-### Panel B
-```{r indel distribution ssODN, fig.height=4, fig.width=7}
+## Panel 5B
+```{r Fig5B indel distribution ssODN, fig.height=4, fig.width=7}
 ggplot(filter(trip_tib_mut, drug == "DMSO", ssODN == "ssODN"), 
        aes(mutation, freq, color = color)) + 
   geom_quasirandom() + 
@@ -436,9 +607,10 @@ ggplot(filter(trip_tib_mut, drug == "DMSO", ssODN == "ssODN"),
 
 trip_tib_mut %>% filter(drug == "DMSO", ssODN == "ssODN") %>% group_by(mutation) %>% dplyr::summarise(median = median(freq)) %>% arrange(desc(median))
 ```
+###  Figure legend
 
-### Panel C1
-```{r pathways vs contribution ssODN, fig.height=6, fig.width=5}
+### Panel 5C
+```{r Fig5C pathways vs contribution ssODN, fig.height=6, fig.width=5}
 trip_tib_pathways <- trip_tib %>% 
   gather(NHEJ, MMEJ, other_indels, SSTR, key = "pathway", value = 'ratios') %>% 
   distinct(barcode, exp, pathway, .keep_all = TRUE)
@@ -470,46 +642,48 @@ p + scale_fill_manual("legend", values = colores) +
 
 ```
 
-### Panel C2
-```{r}
-###### OR ######
+### Figure legend 
 
-p1 <- trip_tib %>% 
-   filter(ssODN == "-") %>% 
-  gather(other_indels, NHEJ, MMEJ,
-                    key = "pathway", 
-                    value = 'ratios') %>% 
-  ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) + 
-  geom_density() + 
-  theme_bw(base_size = 16) +
-  scale_fill_manual("legend", values = colores)
+<!-- ### Panel C2 -->
+<!-- ```{r} -->
+<!-- ###### OR ###### -->
 
-p2 <- trip_tib %>% 
-  filter(ssODN == "ssODN") %>% 
-  gather(other_indels, NHEJ, MMEJ, SSTR,
-                    key = "pathway", 
-                    value = 'ratios') %>% 
-  ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) + 
-  geom_density() + 
-  theme_bw(base_size = 16) +
-  scale_fill_manual("legend", values = colores)
+<!-- p1 <- trip_tib %>%  -->
+<!--    filter(ssODN == "-") %>%  -->
+<!--   gather(other_indels, NHEJ, MMEJ, -->
+<!--                     key = "pathway",  -->
+<!--                     value = 'ratios') %>%  -->
+<!--   ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) +  -->
+<!--   geom_density() +  -->
+<!--   theme_bw(base_size = 16) + -->
+<!--   scale_fill_manual("legend", values = colores) -->
 
-p3 <- trip_tib %>% 
-  filter(drug == "DMSO") %>% 
-  gather(other_indels, NHEJ, MMEJ, SSTR,
-                    key = "pathway", 
-                    value = 'ratios') %>% 
-  ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) + 
-  geom_density() + 
-  theme_bw(base_size = 16) +
-  scale_fill_manual("legend", values = colores)
- 
-p1 + facet_wrap(. ~ drug)
-p2 + facet_wrap(. ~ drug)
-```
+<!-- p2 <- trip_tib %>%  -->
+<!--   filter(ssODN == "ssODN") %>%  -->
+<!--   gather(other_indels, NHEJ, MMEJ, SSTR, -->
+<!--                     key = "pathway",  -->
+<!--                     value = 'ratios') %>%  -->
+<!--   ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) +  -->
+<!--   geom_density() +  -->
+<!--   theme_bw(base_size = 16) + -->
+<!--   scale_fill_manual("legend", values = colores) -->
 
-### Panel D
-```{r scatters MMEJ ssODN vs MMEJ -, fig.height=5, fig.width=5}
+<!-- p3 <- trip_tib %>%  -->
+<!--   filter(drug == "DMSO") %>%  -->
+<!--   gather(other_indels, NHEJ, MMEJ, SSTR, -->
+<!--                     key = "pathway",  -->
+<!--                     value = 'ratios') %>%  -->
+<!--   ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) +  -->
+<!--   geom_density() +  -->
+<!--   theme_bw(base_size = 16) + -->
+<!--   scale_fill_manual("legend", values = colores) -->
+
+<!-- p1 + facet_wrap(. ~ drug) -->
+<!-- p2 + facet_wrap(. ~ drug) -->
+<!-- ``` -->
+
+## Panel 5D
+```{r Fig5D scatters MMEJ ssODN vs MMEJ -, fig.height=5, fig.width=5}
 formula <- y ~ x
 
 trip_lbr2_ssODN_MMEJ <- trip_tib %>% filter(drug == "DMSO") %>% dplyr::select(barcode, ssODN, MMEJ, late_replicating) %>% spread(ssODN, MMEJ) 
@@ -532,10 +706,10 @@ ggplot(trip_lbr2_ssODN_MMEJ, aes(`-`, ssODN)) +
         size = 5) +
   stat_cor(method = "pearson", label.x = 0, label.y = .3)
 ```
-####  Figure legend
+###  Figure legend
 
-### Panel E
-```{r MMEJ vs SSTR, fig.height=5, fig.width=5}
+## Panel 5E
+```{r Fig5E MMEJ vs SSTR, fig.height=5, fig.width=5}
 trip_tib %>%
   filter(drug == "DMSO", ssODN == "ssODN") %>%
   ggplot(., aes(MMEJ, SSTR)) + 
@@ -555,88 +729,66 @@ trip_tib %>%
         size = 5) +
   stat_cor(method = "pearson")
 ```
-#### Figure legend
+### Figure legend
 
-### Panel F
-```{r pathways vs chrom ssODN DMSO, fig.height=8, fig.width=9}
+## Panel 5F
+```{r Fig5F pathways vs chrom ssODN DMSO, fig.height=8, fig.width=9}
 chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 
-NHEJ.hist.corr <- CorrelationDFMean(trip_tib, "indel_mean_LBR2_ssODN_DMSO_64h", "NHEJ", targets = chrom.mods.cols) %>% 
+SSTR.hist.corr <- CorrelationDFMean(trip_tib, "indel_mean_LBR2_ssODN_DMSO_64h", "NHEJ", targets = chrom.mods.cols) %>% 
   arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
  
 lims = 1
-CorrelationPlotMean(trip_tib, "indel_mean_LBR2_ssODN_DMSO_64h", c("NHEJ", "MMEJ", "SSTR", "other_indels") , targets = NHEJ.hist.corr)
+CorrelationPlotMean(trip_tib, "indel_mean_LBR2_ssODN_DMSO_64h", c("NHEJ", "MMEJ", "SSTR", "other_indels") , targets = SSTR.hist.corr)
 ```
 
-#### Figure legend
+### Figure legend
 
-### Panel G
-```{r SSTR ratio per heterochomatin domain, fig.height=6, fig.width=10}
-het.domains <- colnames(trip_tib)[grep("K9me3_|K9me2_|K27me3_|LAD|replicating_domain", colnames(trip_tib))]
+## Panel 5G
+```{r Fig5G SSTR ratio per heterochomatin domain, fig.height=6, fig.width=10}
+tib.dt = data.table(trip_tib)
 
-trip_tib_domains <- trip_tib %>% 
-  filter(!is.na(LAD), ssODN == "ssODN", drug == "DMSO") %>% 
-  dplyr::select(barcode, het.domains, SSTR_MMEJSSTR) %>%
-  gather(het.domains, key = "dom_type", value = "domain") 
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
 
-trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c(het.domains[grep("K27me3", het.domains)], 
-                                        het.domains[grep("K9me2", het.domains)], 
-                                        het.domains[grep("K9me3", het.domains)], 
-                                        het.domains[grep("repli", het.domains)],
-                                        "LAD"))
+domains = paste0(domain_levels, '_domain')
 
-trip_tib_domains <- trip_tib_domains %>% mutate(dom_type = ifelse(grepl("K9me3", dom_type), "H3K9me3", 
-                                                                  ifelse(grepl("K9me2", dom_type), "H3K9me2", 
-                                                                         ifelse(grepl("K27me3", dom_type), "H3K27me3", 
-                                                                                ifelse(grepl("replic", dom_type), "RepTime", 
-                                                                                       "LAD")))),
-                                                domain = ifelse(grepl("iDomain|iAD", domain), "iDomain", 
-                                                                "Domain"))
+indel.dt = unique(tib.dt[exp_pool == "indel_mean_LBR2_ssODN_DMSO_64h",  
+                         c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR',
+                           domains), with=F])
 
-trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c("H3K9me3", "H3K9me2", "H3K27me3", "RepTime", "LAD"))
-levels(trip_tib_domains$dom_type)
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
 
-ggplot(trip_tib_domains, aes(dom_type, SSTR_MMEJSSTR, color = domain)) +  
-  geom_quasirandom(size = 1, dodge.width = .6, varwidth = TRUE) + 
-  theme_bw(base_size = 16) + 
-  scale_color_manual(values = c("iDomain" = "gray", "Domain" = "black"))  +
-  stat_summary(fun.y=median, fun.ymin = median, fun.ymax = median, geom="crossbar", width = 0.5)
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
 
-trip_tib_domains %>% group_by(dom_type, domain) %>% dplyr::summarise(median_proportion = median(SSTR_MMEJSSTR))
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
 
-trip_tib_domains %>% 
-  # mutate(domain_type = paste0(domain, dom_type, sep = "_")) %>%
-  group_by(dom_type) %>%  
-  do(broom::tidy(wilcox.test(SSTR_MMEJSSTR ~ domain, data = .))) %>%
-  ungroup() %>% 
-  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val. 
-  arrange(p.adj)
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
-trip_tib_domains %>% 
-  ungroup %>%
-  group_by(dom_type, domain) %>%  
-  dplyr::summarise(means = mean(SSTR_MMEJSSTR),
-                   meadians = median(SSTR_MMEJSSTR)) %>%
-  dplyr::select(-means) %>%
-  spread(domain, meadians) %>%
-  mutate(fold_change = Domain/iDomain)
+opt_df = get_combinations(domain_levels)
 
-trip_tib_domains %>% 
-  ungroup %>%
-  group_by(dom_type, domain) %>%  
-  dplyr::summarise(means = mean(SSTR_MMEJSSTR),
-                   meadians = median(SSTR_MMEJSSTR)) %>%
-  dplyr::select(-means) %>%
-  spread(domain, meadians) %>%
-  mutate(fold_change = (1-Domain)/(1-iDomain))
+
+# Ratio of SSTR vs all indels
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+                   domain_levels, 'SSTR', min_count = 20)
+
 ```
-#### Figure legend
+
+### Figure legend
+
+## Panel 5H
+```{r Fig5H SSTR_MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
+
+# Ratio of SSTR vs MMEJ
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+                   domain_levels, 'SSTR_MMEJSSTR', min_count = 20)
+```
 
 
-## Supplementary Figures
+# Supplementary Figure 5
 
-### Panel A
-```{r scatter NHEJ with and without ssODN, fig.height=5, fig.width=5}
+## Panel S5A
+```{r FigS5A scatter NHEJ with and without ssODN, fig.height=5, fig.width=5}
 trip_lbr2_ssODN_NHEJ <- trip_tib %>% filter(drug == "DMSO") %>% dplyr::select(barcode, ssODN, NHEJ, late_replicating) %>% spread(ssODN, NHEJ) 
 
 ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN)) + 
@@ -657,7 +809,8 @@ ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN)) +
         size = 5) +
   stat_cor(method = "pearson")
 ```
-#### Figure legend
+
+### Figure legend
 
 <!-- ### Panel B -->
 <!-- ```{r seperate replicates late replicatung, fig.height=12, fig.width=12} -->
@@ -676,8 +829,8 @@ ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN)) +
 <!--   facet_wrap(pathway ~ exp_pool, ncol = 4, scales = "free_x") -->
 <!-- ``` -->
 
-
-```{r scatter other with and without ssODN, fig.height=5, fig.width=5}
+## Panel S5B
+```{r FigS5B scatter other with and without ssODN, fig.height=5, fig.width=5}
 trip_lbr2_ssODN_other <- trip_tib %>% filter(drug == "DMSO") %>% dplyr::select(barcode, ssODN, other_indels, late_replicating) %>% spread(ssODN, other_indels) 
 
 ggplot(trip_lbr2_ssODN_other, aes(`-`, ssODN)) + 
@@ -700,8 +853,8 @@ ggplot(trip_lbr2_ssODN_other, aes(`-`, ssODN)) +
 ```
 
 
-### Panel B
-```{r scatterplot pathways vs lmnb1 and K4me1 ssODN, fig.height=12, fig.width=6}
+## Panel S5C
+```{r FigS5C scatterplot pathways vs lmnb1 and K4me1 ssODN, fig.height=12, fig.width=6}
 trip_tib %>% 
   filter(drug == "DMSO", ssODN == "ssODN") %>% 
   dplyr::select(barcode, MMEJ, NHEJ, other_indels, SSTR, late_replicating, H3K4me1) %>% 
@@ -715,10 +868,10 @@ trip_tib %>%
   stat_cor(method = "pearson") +
   facet_wrap(pathway ~ feature, scales = "free", ncol = 2)
 ```
-#### Figure legend
+### Figure legend
 
-### Panel C
-```{r  mars bayes sstr, fig.height=12, fig.width=12}
+## Panel S5D
+```{r FigS5D mars bayes sstr, fig.height=12, fig.width=12}
 chip.dt = readRDS('/DATA/projects/DSBrepair/data/R/cl20191217_ChIP_mean_selection.RDS')
 indel.dt = data.table(trip_tib_2000)
 
@@ -776,7 +929,48 @@ full_set_64[,signed_importance:=ifelse(method=='bayes', -importance, importance)
 plot_MARS_bayes(bayes_set_64, MARS_set_64, none_label = 'ambiguous',
 	            top='SSTR / (MMEJ + SSTR) 64h feature importance')
 ```
-#### Figure legend
+
+### Figure legend
+
+## Panel S5E
+```{r FigS5E SSTR heterochrom domains, fig.height=10, fig.width=12}
+tib.dt = data.table(trip_tib)
+
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
+
+domains = paste0(domain_levels, '_domain')
+
+indel.dt = unique(tib.dt[exp_pool == "indel_mean_LBR2_ssODN_DMSO_64h",  
+                         c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR',
+                           domains), with=F])
+
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+
+# Ratio of SSTR vs all indels
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+                   domain_levels, 'SSTR')
+
+```
+
+### Figure legend
+
+## Panel S5F
+```{r FigS5F SSTR_MMEJ heterochrom domains, fig.height=10, fig.width=12}
+# Ratio of SSTR vs MMEJ
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+                   domain_levels, 'SSTR_MMEJSSTR')
+```
+
+### Figure legend
 
 
 # Session Info

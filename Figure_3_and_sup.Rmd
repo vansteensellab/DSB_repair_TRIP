@@ -33,37 +33,31 @@ pdf.options(useDingbats = FALSE)
 ## Description of Data
 
 # Data processing
-## Path, Libraries, Parameters and Useful Functions
+## Path, Libraries, Parameters
 ```{r setup, message=FALSE, warnings=FALSE}
 
 
 # INPUT DIRECTORY
-in.dir.date = 20191230
+in.dir.date = 20200121
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 
 # libraries:
 library(ggplot2)
 library(ggpubr)
-# library(reshape2)
-# library(tibble)
-# library(GenomicRanges)
-# library(rtracklayer)
 library(corrr)
 library(Hmisc)
 library(ggbeeswarm)
 library(RColorBrewer)
-
 library(dplyr)
-# library(plyr)
 library(tidyr)
-# library(stringr)
-# library(plotly)
 library(ggpmisc)
 library(UpSetR)
 library(stringr)
 library(gridExtra)
 library(data.table)
+library(cowplot)
+library(grid)
 
 color_redblue <- rev(brewer.pal(11,"RdBu"))
 duocolor <- c("#EE756E", "#2BB6BE")
@@ -75,7 +69,7 @@ coloru <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#
 colory <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "SSTR" = "#007A4C")
 ```
 
-### Custom functions
+## Custom functions
 Functions used thoughout this script.
 ```{r, message=FALSE, warnings=FALSE}
 SetFileName <- function(filename, initials) {
@@ -87,7 +81,10 @@ SetFileName <- function(filename, initials) {
 }
 
 CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
-  hist.corr.list <- data[data$exp_pool==condition_name, ] %>% select(feature_name, targets) %>% as.matrix() %>% rcorr(type = "pearson")
+  hist.corr.list <- data[data$exp_pool==condition_name, ] %>% 
+    dplyr::select(feature_name, targets) %>% 
+    as.matrix() %>% 
+    rcorr(type = "pearson")
   
   histone.corr.df <- data.frame(rowname = names(hist.corr.list$r[1, -1]), 
                                 corr = hist.corr.list$r[1, -1], 
@@ -100,7 +97,10 @@ CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.val
 CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
   cor.df = data.frame()
   for (i in feature_name){
-    corr.list <- data %>% filter(exp_pool==condition_name) %>% select(i, as.character(targets)) %>% as.matrix() %>% rcorr(type = "pearson")
+    corr.list <- data %>% filter(exp_pool==condition_name) %>% 
+      dplyr::select(i, as.character(targets)) %>% 
+      as.matrix() %>% 
+      rcorr(type = "pearson")
   
     df <- data.frame(rowname = names(corr.list$r[1, -1]), 
                                 corr = corr.list$r[1, -1], 
@@ -123,6 +123,177 @@ CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.v
     coord_flip()
   return(list(dataframe=cor.df, plot = p))
 }
+
+get_combinations <- function(domain_vec){
+    n_domain = length(domain_vec)
+    get_ivec <-function (last_x, n_domain){
+    	if (last_x < n_domain){
+    		i_vec = c(0, c((last_x+1):n_domain))
+    	} else{
+    		i_vec = c(0)
+    	}
+    }
+
+    combine <- function(x_new, x_vec, n_domain){
+        new_vec = c(x_vec, x_new)
+        if (length(new_vec)==n_domain){
+            return(new_vec)
+        } else {
+            i_vec = get_ivec(max(new_vec), n_domain)
+            x_list = lapply(i_vec, combine, x_vec=new_vec,
+                            n_domain=n_domain)
+            return(do.call(rbind, x_list))
+        }
+    }
+
+    comb_list = lapply(c(0:n_domain), combine, x_vec=c(), n_domain=n_domain)
+
+    comb = do.call(rbind, comb_list)
+    comb_df = unique(t(apply(comb, 1, function(x){x[order(x)]})))
+
+    name_list = apply(comb_df, 1, function(x){
+    	name = paste(domain_vec[x], collapse='-')
+    	if (name == ''){
+    		name = 'iDomain'
+    	}
+    	return(name)
+    })
+
+    opt_list = lapply(domain_vec, function(d){
+    	 apply(comb_df, 1, function(x){
+    		opt = domain_vec[x]
+    		return(d%in%opt)
+    	})
+    })
+
+    opt_df = do.call(cbind, opt_list)
+    colnames(opt_df) = domain_vec
+    rownames(opt_df) = name_list
+
+    return(opt_df)
+}
+
+plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_count=Inf){
+
+    opt_melt = reshape2::melt(opt_df)
+    colnames(opt_melt) = c('group', 'domain', 'is_in')
+
+    opt_melt$is_in = ifelse(opt_melt$is_in, 'in', 'out')
+    opt_melt$domain = factor(opt_melt$domain, levels=domains)
+
+
+    group_list = lapply(rownames(opt_df), function(opt_name){
+    	opt = opt_df[opt_name, ]
+    	in_vec = domains[opt]
+    	out_vec = domains[!opt]
+
+    	in_sum = rowSums(indel.dt[,..in_vec])
+    	out_sum = rowSums(indel.dt[,..out_vec])
+    	if (length(in_vec)==0){
+    		in_group = which(out_sum == 0)
+    	} else if (length(out_vec) == 0){
+    		in_group = which(in_sum==length(in_vec))
+    	} else  {
+    		in_group = which(in_sum == length(in_vec) & out_sum==0)
+    	}
+    	return(in_group)
+    })
+
+    names(group_list) = rownames(opt_df)
+    for (opt_name in names(group_list)){
+    	i_vec = group_list[[opt_name]]
+    	indel.dt[i_vec, group := opt_name]
+    }
+    group_count_df = data.frame(indel.dt[,table(group)])
+    group_count_df = group_count_df[order(match(group_count_df$group, rownames(opt_df))),]
+    group_count_sel = group_count_df[group_count_df$Freq >= min_count,]
+    group_count_sel = group_count_sel[group_count_sel$Freq <= max_count,]
+    group_levels =  group_count_sel$group
+    opt_sel = opt_melt[opt_melt$group %in% group_levels, ]
+
+    opt_sel$group = factor(opt_sel$group, levels=group_levels)
+
+    indel_selection = indel.dt[group%in%group_levels, ]
+    indel_selection[,group:=factor(group, levels=group_levels)]
+
+    # wilcox_list = lapply(group_levels[group_levels!='iDomain'],
+    #                      function(g){
+    #                          x = indel_selection[group==g, y_name, with=F]
+    #                          y = indel_selection[group=='iDomain', y_name,
+    #                                              with=F]
+    #                          wilcox.test(unlist(x),unlist(y))
+    #                      })
+
+    group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
+
+    count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
+                            geom_label() +
+                            theme_void()
+
+
+
+    dots = ggplot(opt_sel, aes(x=group, y=domain, color=is_in)) +
+    	geom_point(size=2) +
+    	geom_line(data=opt_sel[opt_sel$is_in=='in',], aes(group=group)) +
+    	theme_bw() +
+    	scale_color_manual(values=c('in'='black', 'out'='grey70')) +
+    	guides(color=FALSE)  +
+    	geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    			   lwd=0.5, colour="grey90") +
+    	theme(axis.title=element_blank(),
+    		  axis.text=element_blank(),
+    		  axis.ticks=element_blank(),
+    		  panel.grid.major = element_blank())
+
+    symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
+                  symbols = c("****", "***", "**", "*", ""))
+
+    beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
+    			  geom_quasirandom(width=0.3) +
+    			  theme_bw() +
+                  ylim(0,1) +
+    			  geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    			             lwd=0.5, colour="grey90") +
+                  stat_summary(fun.y=median, fun.ymin = median,
+                               fun.ymax = median, geom="crossbar", width = 0.5,
+                               color='red') +
+                  stat_compare_means(aes(label = ..p.signif..),
+                                     symnum.args = symnum,
+                                     ref.group='iDomain') +
+    			  theme(axis.title=element_blank(),
+    			        axis.text.x=element_blank(),
+      				    panel.grid.major.x = element_blank(),
+    				    axis.ticks.x=element_blank())
+
+    count = data.frame(domain=gsub('_domain', '', domains),
+    	               count=colSums(indel.dt[,..domains], na.rm=T))
+
+    count$domain = factor(count$domain, levels=domain_levels)
+
+
+    histogram = ggplot(count, aes(x=1, y=domain, label = count)) +
+    				geom_label() +
+    				theme_bw() +
+    				theme(plot.background = element_blank(),
+        				  panel.grid.major = element_blank(),
+        				  panel.grid.minor = element_blank(),
+        				  panel.border = element_blank(),
+    					  axis.title=element_blank(),
+    	  			      axis.text.x=element_blank(),
+    	  				  axis.ticks=element_blank())
+
+    empty = ggplot(data=data.frame(1,1),aes(x=1,y=1)) +
+                geom_point() +
+                theme_void()
+
+    count_beeswarm = plot_grid(beeswarm, count_plot, ncol=1, rel_heights=c(20,1),
+                               align='v', axis='lr')
+    return(plot_grid(empty, beeswarm, empty, count_plot,
+                     histogram, dots, nrow=3,
+                     rel_widths=c(1,10), rel_heights=c(15,1,5), align='vh',
+                     axis='tlbr'))
+}
+
 ```
 
 # Data import
@@ -138,8 +309,8 @@ load("/DATA/projects/DSBrepair/data/R/xv20190514_ChIP2Chromatinmarks.RData")
 ChIP2 <- chip.analysis.tib
 
 # Select samples and columns we are interested in inpbcreads basically
-ChIP3.selected <- ChIP3 %>% filter(antibody %in% c("H3K27me3") & sgRNA == "noguide") %>% select(c("barcode","antibody","inpindelreads"))
-ChIP2.selected <- ChIP2 %>% filter(antibody %in% c("H3K4me1","H3K27ac","H3K9me3") & sgRNA == "noguide") %>% select(c("barcode","antibody","inpindelreads"))
+ChIP3.selected <- ChIP3 %>% filter(antibody %in% c("H3K27me3") & sgRNA == "noguide") %>% dplyr::select(barcode, antibody, inpindelreads)
+ChIP2.selected <- ChIP2 %>% filter(antibody %in% c("H3K4me1","H3K27ac","H3K9me3") & sgRNA == "noguide") %>% dplyr::select(barcode, antibody, inpindelreads)
 
 #Merge both tibs in a single tib
 selected.chip.tib <- plyr::rbind.fill(ChIP2.selected,ChIP3.selected)
@@ -148,7 +319,7 @@ selected.chip.tib <- plyr::rbind.fill(ChIP2.selected,ChIP3.selected)
 log2.sel.amp.tib <- selected.chip.tib %>% 
   mutate(amp.indelpcr.mean = log2(inpindelreads),
          barcode = paste0(barcode, ".B")) %>%
-  select(c("barcode","antibody","amp.indelpcr.mean"))
+  dplyr::select(barcode, antibody, amp.indelpcr.mean)
 ```
 
 
@@ -183,10 +354,10 @@ trip_tib$spin_state <- factor(trip_tib$spin_state, levels=c("Speckle",
                                                                       "Lamina",
                                                                       NA ))
 ```
-# Figures
-## Main Figure
-### Panel A
-```{r efficiency LBR1 and LBR2, fig.height=4, fig.width=5}
+
+# Main Figure
+## Panel 3A
+```{r Fig3A efficiency LBR1 and LBR2, fig.height=4, fig.width=5}
 barcodes <- trip_tib %>% group_by(barcode) %>% dplyr::summarise(count = n()) %>% filter(count > 1) %>% pull(barcode)
 trip_tib <- trip_tib %>% filter(barcode %in% barcodes)
 ggplot(trip_tib, aes(efficiency, fill = plasmid, alpha = 0.8)) + 
@@ -196,25 +367,27 @@ ggplot(trip_tib, aes(efficiency, fill = plasmid, alpha = 0.8)) +
   
 ```
 
-### Panel B
+### Figure Legend 
 
-```{r efficiency LBR2 vs LBR1, fig.height=5, fig.width=5}
-trip_tib %>% select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR2, LBR1))  +  
+## Panel 3B
+```{r Fig3B efficiency LBR2 vs LBR1, fig.height=5, fig.width=5}
+trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR2, LBR1))  +  
   geom_point() +
   geom_smooth(method= "loess") + 
   theme_bw(base_size = 16) + 
   stat_cor(method = "spearman", label.x = .25, label.y = .7) 
 ```
 
-### Panel C
+### Figure Legend 
 
-```{r efficiency LBR2 LBR1 vs chrom, fig.height=9, fig.width=9}
+## Panel 3C
+```{r Fig3C efficiency LBR2 LBR1 vs chrom, fig.height=9, fig.width=9}
 trip_tib <- trip_tib_2000 %>% 
   filter(exp_pool %in% c("indel_LBR2Rep5_LBR1_-_-_-_64", "indel_mean_LBR2_0_64h"))
 
 chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 
-trip_tib_eff <- trip_tib %>% select(efficiency, barcode, chrom.mods.cols, plasmid) %>% spread(plasmid, efficiency) %>% na.omit() %>% mutate(exp_pool = "Efficiency_Corr")
+trip_tib_eff <- trip_tib %>% dplyr::select(efficiency, barcode, chrom.mods.cols, plasmid) %>% spread(plasmid, efficiency) %>% na.omit() %>% mutate(exp_pool = "Efficiency_Corr")
 
 chrom.mods.cols <- seq(grep("barcode", names(trip_tib_eff))+1, grep("LBR1", names(trip_tib_eff))-1)
 
@@ -230,114 +403,79 @@ CorrelationPlotMean(trip_tib_eff, "Efficiency_Corr",  c("LBR1", "LBR2") , target
 
 ```
 
-### Panel D
+### Figure Legend 
 
-```{r efficiency heterochrom daomins, fig.height=5, fig.width=12}
-het.domains <- c("H3K27me3_domain", 
-                 "H3K9me2_domain", 
-                 "H3K9me3_domain", 
-                 "late_replicating_domain", 
-                 "LAD")
+## Panel 3D
+```{r Fig3D heterochrom domains efficiency, fig.height=7, fig.width=12}
+tib.dt = data.table(trip_tib)
 
-trip_tib_domains <- trip_tib %>% 
-  select(barcode, het.domains, plasmid, efficiency) %>%
-  filter(!is.na(LAD)) %>% 
-  gather(het.domains, key = "dom_type", value = "domain") 
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
 
+domains = paste0(domain_levels, '_domain')
 
+indel.dt = unique(tib.dt[exp_pool %in% c("indel_LBR2Rep5_LBR1_-_-_-_64",
+                                         "indel_mean_LBR2_0_64h"),
+                         c('exp_pool', 'barcode', 'efficiency',
+                           domains), with=F])
 
-trip_tib_domains <- trip_tib_domains %>% mutate(dom_type = ifelse(grepl("K9me3", dom_type), "H3K9me3", 
-                                                                  ifelse(grepl("K9me2", dom_type), "H3K9me2", 
-                                                                         ifelse(grepl("K27me3", dom_type), "H3K27me3",
-                                                                                ifelse(grepl("replicating", dom_type), "RepTime",
-                                                                                       "LAD")))),
-                                                domain = ifelse(grepl("iDomain|iAD", domain), "iDomain", 
-                                                                "Domain"))
-trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c("H3K9me3", "H3K9me2", "H3K27me3", "RepTime", "LAD"))
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
 
-levels(trip_tib_domains$dom_type)
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
 
-ggplot(trip_tib_domains, aes(dom_type, efficiency, color = domain)) +  
-  geom_quasirandom(size = 1, dodge.width = .6, varwidth = TRUE) + 
-  theme_bw() + facet_wrap(. ~ plasmid) + 
-  scale_color_manual(values = c("iDomain" = "gray", "Domain" = "black")) +
-  stat_summary(fun.y=median, fun.ymin = median, fun.ymax = median, geom="crossbar", width = 0.5)
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
 
-trip_tib_domains %>% 
-  group_by(dom_type, domain, plasmid) %>% 
-  dplyr::summarise(median_eff = median(efficiency))
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
-trip_tib_domains %>% 
-  # mutate(domain_type = paste0(domain, dom_type, sep = "_")) %>%
-  group_by(dom_type, plasmid) %>%  
-  do(broom::tidy(wilcox.test(efficiency ~ domain, data = .))) %>%
-  ungroup() %>% 
-  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val. 
-  arrange(p.adj)
+opt_df = get_combinations(domain_levels)
+# 
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_0_64h'], opt_df,
+                   domain_levels, 'efficiency', min_count=20)
 
-trip_tib_domains %>% 
-  ungroup %>%
-  group_by(dom_type, plasmid, domain) %>%  
-  dplyr::summarise(means = mean(efficiency),
-                   meadians = median(efficiency)) %>%
-  select(-meadians) %>%
-  spread(domain, means) %>%
-  mutate(fold_change = Domain/iDomain)
-
-trip_tib_domains %>% 
-  ungroup %>%
-  group_by(dom_type, plasmid, domain) %>%  
-  dplyr::summarise(means = mean(efficiency),
-                   meadians = median(efficiency)) %>%
-  select(-meadians) %>%
-  spread(domain, means) %>%
-  mutate(fold_change = (1-Domain)/(1-iDomain))
+plot_comb_grid(indel.dt[exp_pool=='indel_LBR2Rep5_LBR1_-_-_-_64'], opt_df,
+                   domain_levels, 'efficiency', min_count=20)
 ```
 
-## Supplementary Figure 2
 
-### Panel A
-```{r chip values vs domains, fig.height=10, fig.width=7}
-domains.dt <- trip_tib %>% distinct(barcode, .keep_all = TRUE) %>%
-  select(barcode, H3K27me3_domain, H3K9me2_domain, H3K9me3_domain, late_replicating_domain, LAD) %>% 
-  mutate(LAD = ifelse(grepl("iAD", LAD), "iDomain", 
-                      "Domain")) %>%
-  gather(H3K27me3_domain, H3K9me2_domain, H3K9me3_domain, late_replicating_domain, LAD, key = target, value = domain) %>% 
-  mutate(target = gsub("(.*)_domain", "\\1", target)) %>%
-  mutate(target = gsub("LAD", "LMNB1", target)) %>% 
-  as.data.table()
+### Figure Legend 
 
-chip.dt <- trip_tib %>%  distinct(barcode, .keep_all = TRUE) %>%
-  select(barcode, H3K27me3, H3K9me2, H3K9me3,  LMNB1, late_replicating) %>% as.data.table() 
+# Supplementary Figure 3
 
-setkey(domains.dt, 'target')
+## Panel S3A
+```{r FigS3A heterochrom domains efficiency supp, fig.height=8, fig.width=16}
+tib.dt = data.table(trip_tib)
 
-plot_list = lapply(domains.dt[,unique(target)], function(target){
-	data = cbind(domains.dt[target, 'domain'],
-	             chip.dt[, ..target])
-	ggplot(data, aes_string(x='domain', y=target, color='domain')) +
-		geom_quasirandom() +
-		theme_bw(base_size = 16) +
-		ggtitle(target)
-})
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
 
-do.call(grid.arrange, plot_list)
+domains = paste0(domain_levels, '_domain')
+
+indel.dt = unique(tib.dt[exp_pool %in% c("indel_LBR2Rep5_LBR1_-_-_-_64",
+                                         "indel_mean_LBR2_0_64h"),
+                         c('exp_pool', 'barcode', 'efficiency',
+                           domains), with=F])
+
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+# 
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_0_64h'], opt_df,
+                   domain_levels, 'efficiency')
+
+plot_comb_grid(indel.dt[exp_pool=='indel_LBR2Rep5_LBR1_-_-_-_64'], opt_df,
+                   domain_levels, 'efficiency')
 ```
 
-### Panel B
-```{r upset, fig.height=7, fig.width=12}
-domain_data_frame <- trip_tib_domains %>% filter(plasmid == "LBR2") %>% select(-efficiency, -plasmid) %>% spread(dom_type, domain) %>% as.data.frame()
+### Figure Legend 
 
-domain_data_frame[domain_data_frame=="Domain"] <- 1
-domain_data_frame[domain_data_frame=="iDomain"] <- 0
-
-domain_data_frame[, 2:6] <- sapply(domain_data_frame[2:6],as.integer)
-
-upset(domain_data_frame)
-```
-
-### Panel C
-```{r chip clone 5, fig.height=6, fig.width=6}
+## Panel S3B
+```{r FigS3B chip clone 5, fig.height=6, fig.width=6}
 Chip.seq.data.melt <- trip_tib_2000 %>% filter(cell_line == "clone5")  %>% distinct(barcode, .keep_all = TRUE) %>% select(barcode, H3K27me3, H3K4me1, H3K9me3,H3K27ac) %>% gather(H3K27me3, H3K4me1, H3K9me3,H3K27ac, key = antibody, value = value)
 
 signal.amp.seq <- left_join(log2.sel.amp.tib,Chip.seq.data.melt, by = c("barcode", "antibody"))
@@ -346,6 +484,53 @@ signal.amp.seq <- left_join(log2.sel.amp.tib,Chip.seq.data.melt, by = c("barcode
 ggplot(signal.amp.seq, aes(value,amp.indelpcr.mean)) + geom_point() + geom_smooth(method = "lm") + facet_wrap(~ antibody, scales= "free") + ylab("log2(Input normalized indel PCR reads)") + xlab("log2(ChIPseq mean 2kb bin)") + stat_cor(method = "pearson", label.x.npc = 0, label.y.npc = 1, vjust = 0) + ggtitle("ChIP seq vs. amplicon seq signal in barcode") + theme_bw(base_size = 16)
 ```
 
+### Figure Legend 
+
+<!-- ### Panel A -->
+<!-- ```{r chip values vs domains, fig.height=10, fig.width=7} -->
+<!-- domains.dt <- trip_tib %>% distinct(barcode, .keep_all = TRUE) %>% -->
+<!--   dplyr::select(barcode,  -->
+<!--                 H3K27me3_domain,  -->
+<!--                 H3K9me2_domain,  -->
+<!--                 H3K9me3_domain,  -->
+<!--                 late_replicating_domain,  -->
+<!--                 LAD) %>%  -->
+<!--   mutate(LAD = ifelse(grepl("iAD", LAD), "iDomain",  -->
+<!--                       "Domain")) %>% -->
+<!--   gather(H3K27me3_domain,  -->
+<!--          H3K9me2_domain,  -->
+<!--          H3K9me3_domain,  -->
+<!--          late_replicating_domain,  -->
+<!--          LAD,  -->
+<!--          key = target,  -->
+<!--          value = domain) %>%  -->
+<!--   mutate(target = gsub("(.*)_domain", "\\1", target)) %>% -->
+<!--   mutate(target = gsub("LAD", "LMNB1", target)) %>%  -->
+<!--   as.data.table() -->
+
+<!-- chip.dt <- trip_tib %>%  -->
+<!--   distinct(barcode, .keep_all = TRUE) %>% -->
+<!--   dplyr::select(barcode,  -->
+<!--                 H3K27me3,  -->
+<!--                 H3K9me2,  -->
+<!--                 H3K9me3,   -->
+<!--                 LMNB1,  -->
+<!--                 late_replicating) %>%  -->
+<!--   as.data.table()  -->
+
+<!-- setkey(domains.dt, 'target') -->
+
+<!-- plot_list = lapply(domains.dt[,unique(target)], function(target){ -->
+<!-- 	data = cbind(domains.dt[target, 'domain'], -->
+<!-- 	             chip.dt[, ..target]) -->
+<!-- 	ggplot(data, aes_string(x='domain', y=target, color='domain')) + -->
+<!-- 		geom_quasirandom() + -->
+<!-- 		theme_bw(base_size = 16) + -->
+<!-- 		ggtitle(target) -->
+<!-- }) -->
+
+<!-- do.call(grid.arrange, plot_list) -->
+<!-- ``` -->
 
 <!-- ### Panel C -->
 <!-- ```{r spinstatesefficiceny, fig.height=7, fig.width=12} -->

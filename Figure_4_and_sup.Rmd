@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20191230
+in.dir.date = 20200121
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -103,7 +103,7 @@ feature_color = c(insulator="black", repressive="white", euchromatin="black",
                   methylation='black')
 ```
 
-### Custom functions
+## Custom functions
 Functions used thoughout this script.
 ```{r, message=FALSE, warnings=FALSE}
 SetFileName <- function(filename, initials) {
@@ -243,7 +243,6 @@ bootstrap_pcorsign_func <- function(X, y, all){
 }
 
 
-
 bootstrap_mars_pcor <-function(X, y, nboot=1000, all=T, ncores=20){
 	mars_boot_list = mclapply(1:nboot, function(i){
 		b_lasso = bootstrap_pcorsign_func(X, y, all)
@@ -271,7 +270,6 @@ bootstrap_mars_pcor <-function(X, y, nboot=1000, all=T, ncores=20){
 
 	return(mars.dt)
 }
-
 
 
 
@@ -364,8 +362,6 @@ plot_MARS_bayes <- function(left_set, right_set, none_label='ambiguous',
 }
 
 
-
-
 clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2',
                                     'H3K9me3', 'H3K27me3', 'EZH2', 'CTCF', 'SMC3',
 							        'HDAC3', 'HDAC2', 'HDAC1', 'H3K4me1',
@@ -380,8 +376,6 @@ clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2',
 									levels=c('transcribing', 'accessibility',
                                              'methylation', 'euchromatin',
 								             'HDAC', 'insulator', 'repressive')))
-
-
 
 cor_test <- function(y, X, left, right){
     cor_list = lapply(X, function(x){
@@ -399,6 +393,176 @@ cor_test <- function(y, X, left, right){
                 p_adj=p_adj, target=target, color=color,
                 feature_group=feature_group))
 }
+
+get_combinations <- function(domain_vec){
+    n_domain = length(domain_vec)
+    get_ivec <-function (last_x, n_domain){
+    	if (last_x < n_domain){
+    		i_vec = c(0, c((last_x+1):n_domain))
+    	} else{
+    		i_vec = c(0)
+    	}
+    }
+
+    combine <- function(x_new, x_vec, n_domain){
+        new_vec = c(x_vec, x_new)
+        if (length(new_vec)==n_domain){
+            return(new_vec)
+        } else {
+            i_vec = get_ivec(max(new_vec), n_domain)
+            x_list = lapply(i_vec, combine, x_vec=new_vec,
+                            n_domain=n_domain)
+            return(do.call(rbind, x_list))
+        }
+    }
+
+    comb_list = lapply(c(0:n_domain), combine, x_vec=c(), n_domain=n_domain)
+
+    comb = do.call(rbind, comb_list)
+    comb_df = unique(t(apply(comb, 1, function(x){x[order(x)]})))
+
+    name_list = apply(comb_df, 1, function(x){
+    	name = paste(domain_vec[x], collapse='-')
+    	if (name == ''){
+    		name = 'iDomain'
+    	}
+    	return(name)
+    })
+
+    opt_list = lapply(domain_vec, function(d){
+    	 apply(comb_df, 1, function(x){
+    		opt = domain_vec[x]
+    		return(d%in%opt)
+    	})
+    })
+
+    opt_df = do.call(cbind, opt_list)
+    colnames(opt_df) = domain_vec
+    rownames(opt_df) = name_list
+
+    return(opt_df)
+}
+
+plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_count=Inf){
+
+    opt_melt = reshape2::melt(opt_df)
+    colnames(opt_melt) = c('group', 'domain', 'is_in')
+
+    opt_melt$is_in = ifelse(opt_melt$is_in, 'in', 'out')
+    opt_melt$domain = factor(opt_melt$domain, levels=domains)
+
+
+    group_list = lapply(rownames(opt_df), function(opt_name){
+    	opt = opt_df[opt_name, ]
+    	in_vec = domains[opt]
+    	out_vec = domains[!opt]
+
+    	in_sum = rowSums(indel.dt[,..in_vec])
+    	out_sum = rowSums(indel.dt[,..out_vec])
+    	if (length(in_vec)==0){
+    		in_group = which(out_sum == 0)
+    	} else if (length(out_vec) == 0){
+    		in_group = which(in_sum==length(in_vec))
+    	} else  {
+    		in_group = which(in_sum == length(in_vec) & out_sum==0)
+    	}
+    	return(in_group)
+    })
+
+    names(group_list) = rownames(opt_df)
+    for (opt_name in names(group_list)){
+    	i_vec = group_list[[opt_name]]
+    	indel.dt[i_vec, group := opt_name]
+    }
+    group_count_df = data.frame(indel.dt[,table(group)])
+    group_count_df = group_count_df[order(match(group_count_df$group, rownames(opt_df))),]
+    group_count_sel = group_count_df[group_count_df$Freq>=min_count,]
+    group_count_sel = group_count_sel[group_count_sel$Freq <= max_count,]
+    group_levels =  group_count_sel$group
+    opt_sel = opt_melt[opt_melt$group %in% group_levels, ]
+
+    opt_sel$group = factor(opt_sel$group, levels=group_levels)
+
+    indel_selection = indel.dt[group%in%group_levels, ]
+    indel_selection[,group:=factor(group, levels=group_levels)]
+
+    # wilcox_list = lapply(group_levels[group_levels!='iDomain'],
+    #                      function(g){
+    #                          x = indel_selection[group==g, y_name, with=F]
+    #                          y = indel_selection[group=='iDomain', y_name,
+    #                                              with=F]
+    #                          wilcox.test(unlist(x),unlist(y))
+    #                      })
+
+    group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
+
+    count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
+                            geom_label() +
+                            theme_void()
+
+
+    dots = ggplot(opt_sel, aes(x=group, y=domain, color=is_in)) +
+    	geom_point(size=2) +
+    	geom_line(data=opt_sel[opt_sel$is_in=='in',], aes(group=group)) +
+    	theme_bw() +
+    	scale_color_manual(values=c('in'='black', 'out'='grey70')) +
+    	guides(color=FALSE)  +
+    	geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    			   lwd=0.5, colour="grey90") +
+    	theme(axis.title=element_blank(),
+    		  axis.text=element_blank(),
+    		  axis.ticks=element_blank(),
+    		  panel.grid.major = element_blank())
+
+    symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
+                  symbols = c("****", "***", "**", "*", ""))
+
+    beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
+    			  geom_quasirandom(width=0.3) +
+    			  theme_bw() +
+                  ylim(0,1) +
+    			  geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    			             lwd=0.5, colour="grey90") +
+                  stat_summary(fun.y=median, fun.ymin = median,
+                               fun.ymax = median, geom="crossbar", width = 0.5,
+                               color='red') +
+                  stat_compare_means(aes(label = ..p.signif..),
+                                     symnum.args = symnum,
+                                     ref.group='iDomain') +
+    			  theme(axis.title=element_blank(),
+    			        axis.text.x=element_blank(),
+      				    panel.grid.major.x = element_blank(),
+    				    axis.ticks.x=element_blank())
+
+    count = data.frame(domain=gsub('_domain', '', domains),
+    	               count=colSums(indel.dt[,..domains], na.rm=T))
+
+    count$domain = factor(count$domain, levels=domain_levels)
+
+
+    histogram = ggplot(count, aes(x=1, y=domain, label = count)) +
+    				geom_label() +
+    				theme_bw() +
+    				theme(plot.background = element_blank(),
+        				  panel.grid.major = element_blank(),
+        				  panel.grid.minor = element_blank(),
+        				  panel.border = element_blank(),
+    					  axis.title=element_blank(),
+    	  			      axis.text.x=element_blank(),
+    	  				  axis.ticks=element_blank())
+
+    empty = ggplot(data=data.frame(1,1),aes(x=1,y=1)) +
+                geom_point() +
+                theme_void()
+
+    count_beeswarm = plot_grid(beeswarm, count_plot, ncol=1, rel_heights=c(20,1),
+                               align='v', axis='lr')
+    return(plot_grid(empty, beeswarm, empty, count_plot,
+                     histogram, dots, nrow=3,
+                     rel_widths=c(1,10), rel_heights=c(15,1,5), align='vh',
+                     axis='tlbr'))
+}
+
 ```
 
 # Data import
@@ -415,10 +579,10 @@ trip_tib_mut <- copy(trip_tib_2000)
 trip_tib_2000 <- trip_tib_2000 %>% distinct(barcode, exp, .keep_all = TRUE)
 
 trip_tib <- trip_tib_2000 %>% 
-  filter(exp_pool == "indel_mean_LBR2_DMSO_64h")
+  filter(exp_pool == "indel_mean_LBR2_DMSO_64h" & cell_line == "20180918.RSTP2")
 
 trip_tib_mut <- trip_tib_mut_2000 %>%
-  filter(exp_pool == "indel_mean_LBR2_DMSO_64h")
+  filter(exp_pool == "indel_mean_LBR2_DMSO_64h" & cell_line == "20180918.RSTP2")
 
 mean_trip_tib_2000 <- trip_tib_2000 %>% 
   gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>% 
@@ -440,38 +604,19 @@ mean_trip_tib_2000$pathway <- factor(mean_trip_tib_2000$pathway, levels=c("other
 mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
 ```
 
-## Figures
+# Main Figure 4
 
-### Panel A
-```{r individual barcodes, fig.height=7, fig.width=6}
-set.seed(2)
-barcodes <- trip_tib_mut %>% filter(nexp > 5) %>% pull(barcode) %>% unique()
-barcodeset <- sample(barcodes, 5)
-
-NHEJratio <- filter(trip_tib_2000, barcode %in% barcodeset) %>% 
-  distinct(barcode, .keep_all = T) %>% 
-  dplyr::select(barcode, NHEJ_MMEJ, efficiency) %>% mutate(label_efficiency = paste0("Efficiency = ", round(efficiency, 2),"%"), 
-                                                    label_ratio = paste0("Ratio = ", round(NHEJ_MMEJ, 2)),
-                                                    label = paste0("IPR ", seq(1, 5)))
-
-colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
-
-p <- ggplot(filter(trip_tib_mut, barcode %in% barcodeset, mutation != "ssODN"), 
-            aes(mutation, freq)) + 
-  geom_bar(stat = "identity", aes(fill = color)) + 
-  scale_fill_manual("legend", values = colore) + 
-  theme_bw() +
-  
-  geom_text(data = NHEJratio, aes(x = 5, y = .7, label = label_efficiency)) +
-  geom_text(data = NHEJratio, aes(x = 5, y = .6, label = label_ratio))
-p + facet_wrap( ~ barcode, ncol = 2)
-```
-
-### Panel B
-```{r pathway contribution, fig.height=6, fig.width=10}
-pathway_distribution <- trip_tib %>% filter(exp_pool == "indel_mean_LBR2_0_64h") %>%
-  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>% arrange(desc(ratios))
-barcode_order <- pathway_distribution %>% filter(pathway == "NHEJ")  %>% arrange(desc(ratios)) %>% select(barcode)
+## Panel 4A
+```{r Fig4A pathway contribution, fig.height=6, fig.width=10}
+pathway_distribution <- trip_tib %>% 
+  filter(exp_pool == "indel_mean_LBR2_DMSO_64h") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels, 
+         key = "pathway", value = 'ratios') %>% 
+  arrange(dplyr::desc(ratios))
+barcode_order <- pathway_distribution %>% 
+  filter(pathway == "NHEJ")  %>% 
+  arrange(dplyr::desc(ratios)) %>% 
+  dplyr::select(barcode)
 
 pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
 pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
@@ -487,8 +632,10 @@ ggplot(pathway_distribution,
   ggtitle("Pathway contribution per barcode")
 ``` 
 
-### Panel C
-```{r ratio and pathway distribution, fig.height=3, fig.width=4}
+### Figure legend
+
+## Panel 4B
+```{r Fig4B ratio and pathway distribution, fig.height=3, fig.width=4}
 ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) + 
   geom_density(fill = "black") + 
   theme_bw(base_size = 16) +
@@ -503,8 +650,10 @@ ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) +
 #   scale_fill_manual("legend", values = colores)
 ```
 
-### Panel D
-```{r pathways vs chrom, fig.height=8, fig.width=9}
+### Figure legend
+
+## Panel 4C
+```{r Fig4C pathways vs chrom, fig.height=8, fig.width=9}
 chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 
 NHEJ.hist.corr <- CorrelationDFMean(trip_tib, "indel_mean_LBR2_DMSO_64h", "NHEJ", targets = chrom.mods.cols) %>% 
@@ -516,70 +665,44 @@ colores <- c("other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a")
 CorrelationPlotMean(trip_tib, "indel_mean_LBR2_DMSO_64h", c("NHEJ", "MMEJ", "other_indels") , targets = NHEJ.hist.corr)
 ```
 
+### Figure legend
 
+## Panel 4D
+```{r Fig4D MMEJ ratio per heterochomatin domain, fig.height=7, fig.width=12}
+tib.dt = data.table(trip_tib)
 
-### Panel E
-```{r MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
-het.domains <- colnames(trip_tib)[grep("K9me3_|K9me2_|K27me3_|LAD|replicating_domain", colnames(trip_tib))]
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
 
-trip_tib_domains <- trip_tib %>% dplyr::select(barcode, het.domains, MMEJ_MMEJNHEJ) %>% filter(!is.na(LAD)) %>% gather(het.domains, key = "dom_type", value = "domain") 
+domains = paste0(domain_levels, '_domain')
 
-trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c(het.domains[grep("K27me3", het.domains)], 
-                                        het.domains[grep("K9me2", het.domains)], 
-                                        het.domains[grep("K9me3", het.domains)], 
-                                        het.domains[grep("repli", het.domains)],
-                                        "LAD"))
+indel.dt = unique(tib.dt[exp_pool =="indel_mean_LBR2_DMSO_64h",
+                         c('exp_pool', 'barcode', 'MMEJ_MMEJNHEJ',
+                           domains), with=F])
 
-trip_tib_domains <- trip_tib_domains %>% mutate(dom_type = ifelse(grepl("K9me3", dom_type), "H3K9me3", 
-                                                                  ifelse(grepl("K9me2", dom_type), "H3K9me2", 
-                                                                         ifelse(grepl("K27me3", dom_type), "H3K27me3", 
-                                                                                ifelse(grepl("replic", dom_type), "RepTime", 
-                                                                                       "LAD")))),
-                                                domain = ifelse(grepl("iDomain|iAD", domain), "iDomain", 
-                                                                "Domain"))
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
 
-trip_tib_domains$dom_type <- factor(trip_tib_domains$dom_type, levels = c("H3K9me3", "H3K9me2", "H3K27me3", "RepTime", "LAD"))
-levels(trip_tib_domains$dom_type)
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
 
-ggplot(trip_tib_domains, aes(dom_type, MMEJ_MMEJNHEJ, color = domain)) +  
-  geom_quasirandom(size = 1, dodge.width = .6, varwidth = TRUE) + 
-  theme_bw(base_size = 16) + 
-  scale_color_manual(values = c("iDomain" = "gray", "Domain" = "black"))  +
-  stat_summary(fun.y=median, fun.ymin = median, fun.ymax = median, geom="crossbar", width = 0.5)
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
 
-trip_tib_domains %>% group_by(dom_type, domain) %>% dplyr::summarise(median_proportion = median(MMEJ_MMEJNHEJ))
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
-trip_tib_domains %>% 
-  # mutate(domain_type = paste0(domain, dom_type, sep = "_")) %>%
-  group_by(dom_type) %>%  
-  do(broom::tidy(wilcox.test(MMEJ_MMEJNHEJ ~ domain, data = .))) %>%
-  ungroup() %>% 
-  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val. 
-  arrange(p.adj)
-
-trip_tib_domains %>% 
-  ungroup %>%
-  group_by(dom_type, domain) %>%  
-  dplyr::summarise(means = mean(MMEJ_MMEJNHEJ),
-                   meadians = median(MMEJ_MMEJNHEJ)) %>%
-  dplyr::select(-means) %>%
-  spread(domain, meadians) %>%
-  mutate(fold_change = Domain/iDomain)
-
-trip_tib_domains %>% 
-  ungroup %>%
-  group_by(dom_type, domain) %>%  
-  dplyr::summarise(means = mean(MMEJ_MMEJNHEJ),
-                   meadians = median(MMEJ_MMEJNHEJ)) %>%
-  dplyr::select(-means) %>%
-  spread(domain, meadians) %>%
-  mutate(fold_change = (1-Domain)/(1-iDomain))
+opt_df = get_combinations(domain_levels)
+# 
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_DMSO_64h'], opt_df,
+                   domain_levels, 'MMEJ_MMEJNHEJ', min_count = 20)
 ```
 
+### Figure legend
+"****" = < 0.0001
+"***" = < 0.001
+"**" = < 0.01
+"*" = < 0.05
 
-## Supplementary figures
-### Panel A
-```{r scatterplot pathways vs lmnb1 and K4me1, fig.height=8, fig.width=12}
+# Supplementary Figure 4
+## Panel S4A
+```{r FigS4A scatterplot pathways vs lmnb1 and K4me1, fig.height=8, fig.width=12}
 trip_tib %>% 
   dplyr::select(barcode, MMEJ, NHEJ, other_indels, LMNB1, H3K4me1) %>% 
   group_by(barcode) %>% 
@@ -593,7 +716,10 @@ trip_tib %>%
   facet_wrap(feature ~ pathway, scales = "free", ncol = 3)
 ```
 
-```{r mars bayes, fig.height=8, fig.width=8}
+### Figure legend
+
+## Panel S4B
+```{r FigS4B mars bayes, fig.height=8, fig.width=8}
 chip.dt = readRDS('/DATA/projects/DSBrepair/data/R/cl20191217_ChIP_mean_selection.RDS')
 indel.dt = data.table(trip_tib_2000)
 
@@ -652,23 +778,50 @@ plot_MARS_bayes(bayes_set_64, MARS_set_64, none_label = 'ambiguous',
 	            top='MMEJ / (MMEJ + NHEJ) 64h feature importance')
 ```
 
+### Figure legend
 
-To be done still - I need the domains.
-```{r MMEJ ratio per spin, fig.height=6, fig.width=10}
-spin_color <- trip_tib %>% dplyr::select(spin_state, spin_color) %>% distinct(spin_state, .keep_all = T) %>% filter(!is.na(spin_state))
-colors <- spin_color$spin_color
-names(colors) <- spin_color$spin_state
-ggplot(filter(trip_tib, !is.na(spin_state)), aes(spin_state, MMEJ_MMEJNHEJ, color = spin_state)) + 
-  geom_quasirandom(size = 3) + 
-  scale_color_manual(values = colors) + 
-  theme_bw(base_size = 16)  +
-  stat_summary(fun.y=median, fun.ymin = median, fun.ymax = median, geom="crossbar", width = 0.5)
+## Panel S4C
+```{r FigS4C MMEJ ratio per heterochomatin domain supp, fig.height=7, fig.width=14}
+tib.dt = data.table(trip_tib)
+
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
+
+domains = paste0(domain_levels, '_domain')
+
+indel.dt = unique(tib.dt[exp_pool =="indel_mean_LBR2_DMSO_64h",
+                         c('exp_pool', 'barcode', 'MMEJ_MMEJNHEJ',
+                           domains), with=F])
+
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+# 
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_DMSO_64h'], opt_df,
+                   domain_levels, 'MMEJ_MMEJNHEJ')
 ```
 
-# Same with all the indels
-```{r fig.height=7, fig.width=12}
+### Figure legend
 
-```
+
+<!-- To be done still - I need the domains. -->
+<!-- ```{r MMEJ ratio per spin, fig.height=6, fig.width=10} -->
+<!-- spin_color <- trip_tib %>% dplyr::select(spin_state, spin_color) %>% distinct(spin_state, .keep_all = T) %>% filter(!is.na(spin_state)) -->
+<!-- colors <- spin_color$spin_color -->
+<!-- names(colors) <- spin_color$spin_state -->
+<!-- ggplot(filter(trip_tib, !is.na(spin_state)), aes(spin_state, MMEJ_MMEJNHEJ, color = spin_state)) +  -->
+<!--   geom_quasirandom(size = 3) +  -->
+<!--   scale_color_manual(values = colors) +  -->
+<!--   theme_bw(base_size = 16)  + -->
+<!--   stat_summary(fun.y=median, fun.ymin = median, fun.ymax = median, geom="crossbar", width = 0.5) -->
+<!-- ``` -->
+
 
 # Session Info
 ```{r}
