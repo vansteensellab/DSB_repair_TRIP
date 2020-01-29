@@ -2,7 +2,7 @@
 title: "Figure 4 and supplemental 4"
 author: "Ruben Schep"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
-output: 
+output:
   html_document:
     theme: journal #cerulean
     highlight: monochrome
@@ -19,7 +19,7 @@ StartTime <-Sys.time()
 library(knitr)
 
 # 8-digit Date tag:
-Date <- substr(gsub("-","",Sys.time()),1,8) 
+Date <- substr(gsub("-","",Sys.time()),1,8)
 
 ## Select outdir
 out.dir = paste0("figures/rs", Date, "/")
@@ -116,11 +116,11 @@ SetFileName <- function(filename, initials) {
 
 CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
   hist.corr.list <- data[data$exp_pool==condition_name, ] %>% dplyr::select(feature_name, targets) %>% as.matrix() %>% rcorr(type = "pearson")
-  
-  histone.corr.df <- data.frame(rowname = names(hist.corr.list$r[1, -1]), 
-                                corr = hist.corr.list$r[1, -1], 
+
+  histone.corr.df <- data.frame(rowname = names(hist.corr.list$r[1, -1]),
+                                corr = hist.corr.list$r[1, -1],
                                 pvalue = hist.corr.list$P[1, -1])
-  
+
   return(histone.corr.df=histone.corr.df)
 }
 
@@ -129,25 +129,25 @@ CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.v
   cor.df = data.frame()
   for (i in feature_name){
     corr.list <- data %>% filter(exp_pool==condition_name) %>% dplyr::select(i, as.character(targets)) %>% as.matrix() %>% rcorr(type = "pearson")
-  
-    df <- data.frame(rowname = names(corr.list$r[1, -1]), 
-                                corr = corr.list$r[1, -1], 
+
+    df <- data.frame(rowname = names(corr.list$r[1, -1]),
+                                corr = corr.list$r[1, -1],
                                 pvalue = corr.list$P[1, -1],
                                 feature = i)
     cor.df <- rbind(cor.df, df)
   }
-  p <- cor.df %>% 
-    transform(rowname = factor(rowname, levels = levels(targets)), 
-              corr = corr, 
+  p <- cor.df %>%
+    transform(rowname = factor(rowname, levels = levels(targets)),
+              corr = corr,
               pvalue = pvalue) %>%
     ggplot(aes(x = rowname, y = corr, fill = feature, alpha = pvalue < p.value)) +
     geom_bar(stat = "identity", position = "dodge") +
     ylab(paste("Pearson correlation with", feature_name)) +
-    xlab("Chromatin Feature") + 
+    xlab("Chromatin Feature") +
     ggtitle(paste("Repair pathways correlation with chromatin features in", condition_name, "exps")) +
     theme_bw(base_size = 16) +
     scale_fill_manual("legend", values = colores) +
-    scale_y_continuous(breaks=seq(-1,1, .1)) + 
+    scale_y_continuous(breaks=seq(-1,1, .1)) +
     coord_flip()
   return(list(dataframe=cor.df, plot = p))
 }
@@ -578,14 +578,14 @@ load(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RData"))
 trip_tib_mut <- copy(trip_tib_2000)
 trip_tib_2000 <- trip_tib_2000 %>% distinct(barcode, exp, .keep_all = TRUE)
 
-trip_tib <- trip_tib_2000 %>% 
+trip_tib <- trip_tib_2000 %>%
   filter(exp_pool == "indel_mean_LBR2_DMSO_64h" & cell_line == "20180918.RSTP2")
 
 trip_tib_mut <- trip_tib_mut_2000 %>%
   filter(exp_pool == "indel_mean_LBR2_DMSO_64h" & cell_line == "20180918.RSTP2")
 
-mean_trip_tib_2000 <- trip_tib_2000 %>% 
-  gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>% 
+mean_trip_tib_2000 <- trip_tib_2000 %>%
+  gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>%
   distinct(barcode, exp, pathway, .keep_all = TRUE)
 
 trip_tib$spin_state <- factor(trip_tib$spin_state, levels=c("Speckle",
@@ -608,14 +608,14 @@ mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
 
 ## Panel 4A
 ```{r Fig4A pathway contribution, fig.height=6, fig.width=10}
-pathway_distribution <- trip_tib %>% 
+pathway_distribution <- trip_tib %>%
   filter(exp_pool == "indel_mean_LBR2_DMSO_64h") %>%
-  gather(NHEJ, MMEJ, SSTR, other_indels, 
-         key = "pathway", value = 'ratios') %>% 
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
   arrange(dplyr::desc(ratios))
-barcode_order <- pathway_distribution %>% 
-  filter(pathway == "NHEJ")  %>% 
-  arrange(dplyr::desc(ratios)) %>% 
+barcode_order <- pathway_distribution %>%
+  filter(pathway == "NHEJ")  %>%
+  arrange(dplyr::desc(ratios)) %>%
   dplyr::select(barcode)
 
 pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
@@ -630,22 +630,22 @@ ggplot(pathway_distribution,
   ylab("Pathway Contribution") +
   scale_fill_manual("legend", values = colores) +
   ggtitle("Pathway contribution per barcode")
-``` 
+```
 
 ### Figure legend
 
 ## Panel 4B
 ```{r Fig4B ratio and pathway distribution, fig.height=3, fig.width=4}
-ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) + 
-  geom_density(fill = "black") + 
+ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) +
+  geom_density(fill = "black") +
   theme_bw(base_size = 16) +
-   scale_x_continuous(breaks=seq(0,5, 1)) 
+   scale_x_continuous(breaks=seq(0,5, 1))
 
-# trip_tib %>% gather(other_indels, NHEJ, MMEJ, 
-#                     key = "pathway", 
-#                     value = 'ratios') %>% 
-#   ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) + 
-#   geom_density() + 
+# trip_tib %>% gather(other_indels, NHEJ, MMEJ,
+#                     key = "pathway",
+#                     value = 'ratios') %>%
+#   ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) +
+#   geom_density() +
 #   theme_bw(base_size = 16) +
 #   scale_fill_manual("legend", values = colores)
 ```
@@ -656,7 +656,7 @@ ggplot(trip_tib, aes(log2(NHEJ_MMEJ), alpha = 0.8)) +
 ```{r Fig4C pathways vs chrom, fig.height=8, fig.width=9}
 chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 
-NHEJ.hist.corr <- CorrelationDFMean(trip_tib, "indel_mean_LBR2_DMSO_64h", "NHEJ", targets = chrom.mods.cols) %>% 
+NHEJ.hist.corr <- CorrelationDFMean(trip_tib, "indel_mean_LBR2_DMSO_64h", "NHEJ", targets = chrom.mods.cols) %>%
   arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
 
 lims = 1
@@ -689,29 +689,90 @@ indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
 colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
 opt_df = get_combinations(domain_levels)
-# 
+#
 plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_DMSO_64h'], opt_df,
                    domain_levels, 'MMEJ_MMEJNHEJ', min_count = 20)
 ```
 
-### Figure legend
-"****" = < 0.0001
+### Figure legend]
+
+
+```{r}
+indel.dt = unique(tib.dt[exp_pool =="indel_mean_LBR2_DMSO_64h",
+                         c('exp_pool', 'barcode', 'H3K4me1',
+                           domains), with=F])
+
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+#
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_DMSO_64h'], opt_df,
+                   domain_levels, 'H3K4me1', min_count = 20)
+
+
+indel.dt = unique(tib.dt[exp_pool =="indel_mean_LBR2_DMSO_64h",
+                         c('exp_pool', 'barcode', 'H3K9me2',
+                           domains), with=F])
+colnames(indel.dt) = gsub('K9me2$', 'K9me2_sig', colnames(indel.dt))
+
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+#
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_DMSO_64h'], opt_df,
+                   domain_levels, 'H3K9me2_sig', min_count = 20)
+
+indel.dt = unique(tib.dt[exp_pool =="indel_mean_LBR2_DMSO_64h",
+                         c('exp_pool', 'barcode', 'H3K9me3',
+                           domains), with=F])
+colnames(indel.dt) = gsub('K9me3$', 'K9me3_sig', colnames(indel.dt))
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+#
+plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_DMSO_64h'], opt_df,
+                   domain_levels, 'H3K9me3_sig', min_count = 20)
+```
+
+
+<!-- "****" = < 0.0001
 "***" = < 0.001
 "**" = < 0.01
-"*" = < 0.05
+"*" = < 0.05 -->
 
 # Supplementary Figure 4
 ## Panel S4A
 ```{r FigS4A scatterplot pathways vs lmnb1 and K4me1, fig.height=8, fig.width=12}
-trip_tib %>% 
-  dplyr::select(barcode, MMEJ, NHEJ, other_indels, LMNB1, H3K4me1) %>% 
-  group_by(barcode) %>% 
+trip_tib %>%
+  dplyr::select(barcode, MMEJ, NHEJ, other_indels, LMNB1, H3K4me1) %>%
+  group_by(barcode) %>%
   gather(MMEJ, NHEJ, other_indels, key = "pathway", value = "ratio") %>%
   gather(LMNB1, H3K4me1, key = "feature", value = "value") %>%
   ggplot(., aes(ratio, value))  +  
   geom_point() +
-  geom_smooth(method= "lm") + 
-  theme_bw(base_size = 16) + 
+  geom_smooth(method= "lm") +
+  theme_bw(base_size = 16) +
   stat_cor(method = "pearson", label.x = .25, label.y = .7) +
   facet_wrap(feature ~ pathway, scales = "free", ncol = 3)
 ```
@@ -770,6 +831,8 @@ MARS_set_64[,color:=factor(color, levels=c('MMEJ', 'NHEJ', 'None'))]
 bayes_set_64[,method:='bayes']
 MARS_set_64[,method:='MARS']
 
+cor(bayes_set_64$importance, MARS_set_64$importance, method='spearman')
+
 full_set_64 = rbind(bayes_set_64, MARS_set_64)
 
 full_set_64[,signed_importance:=ifelse(method=='bayes', -importance, importance)]
@@ -802,7 +865,7 @@ indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
 colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
 opt_df = get_combinations(domain_levels)
-# 
+#
 plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_DMSO_64h'], opt_df,
                    domain_levels, 'MMEJ_MMEJNHEJ')
 ```
@@ -830,4 +893,3 @@ getwd()
 date()
 sessionInfo()
 ```
-

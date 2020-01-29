@@ -446,7 +446,7 @@ p + scale_fill_manual("legend", values = colores) +
 
 ```
 
-### Panel C2
+### GSK/BIX / control per heterochomatin domains.
 
 ```{r ratio DRUG/CTRL per het domain, fig.height=7, fig.width=12}
 domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
@@ -514,24 +514,35 @@ plot_comb_grid(gsk.dt, opt_df, domain_levels, 'MMEJ_MMEJNHEJ',
 ```
 ####  Figure legend
 
-### Panel E
-```{r LMNA KO, fig.height=6, fig.width=10}
+## LMNA and LBR KO in clone 5
+### indel pattern of conditions
+```{r LMNA LBR KO indels, fig.height=6, fig.width=10}
 domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
 
 domains = paste0(domain_levels, '_domain')
 trip_tib_mut = trip_tib_mut_2000 %>%
-  filter(exp_pool %in% c("mean_RSTP2_clone5_LBR2_DMSO_siNT_64", 
+  filter(exp_pool %in% c("indel_clonesiRNARep1_clone5_LBR2_DMSO_siNT_64", 
+                         "indel_clonesiRNARep2_clone5_LBR2_DMSO_siNT_64",
                          "indel_LMNAKO_LBRKORep1_clone5_LBR2_LMNA_KO_1_72",
                          "indel_LMNAKO_LBRKORep1_clone5_LBR2_LMNA_KO_2_72",
                          "indel_LMNAKO_LBRKORep1_clone5_LBR2_LBR_KO_1_72",
-                         "indel_LMNAKO_LBRKORep1_clone5_LBR2_LBR_KO_2_72"))
+                         "indel_LMNAKO_LBRKORep1_clone5_LBR2_LBR_KO_2_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LMNA_KO_1_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LMNA_KO_2_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LBR_KO_1_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LBR_KO_2_72"))
 
 trip_tib = trip_tib_2000 %>%
-  filter(exp_pool %in% c("mean_RSTP2_clone5_LBR2_DMSO_siNT_64", 
+  filter(exp_pool %in% c("indel_clonesiRNARep1_clone5_LBR2_DMSO_siNT_64", 
+                         "indel_clonesiRNARep2_clone5_LBR2_DMSO_siNT_64",
                          "indel_LMNAKO_LBRKORep1_clone5_LBR2_LMNA_KO_1_72",
                          "indel_LMNAKO_LBRKORep1_clone5_LBR2_LMNA_KO_2_72",
                          "indel_LMNAKO_LBRKORep1_clone5_LBR2_LBR_KO_1_72",
-                         "indel_LMNAKO_LBRKORep1_clone5_LBR2_LBR_KO_2_72")) %>%
+                         "indel_LMNAKO_LBRKORep1_clone5_LBR2_LBR_KO_2_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LMNA_KO_1_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LMNA_KO_2_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LBR_KO_1_72",
+                         "indel_LMNAKO_LBRKORep2_clone5_LBR2_LBR_KO_2_72")) %>%
   distinct(barcode, exp_pool, .keep_all = TRUE)
 
 ggplot(filter(trip_tib_mut, mutation != "ssODN"),
@@ -539,12 +550,25 @@ ggplot(filter(trip_tib_mut, mutation != "ssODN"),
   geom_quasirandom() +
   theme_bw(base_size = 16) +
   ylim(0, 1) +
-  theme(legend.position = c(0.1, 0.8)) +
   scale_color_manual("legend", values = colore) +
-  facet_wrap( ~ drug)
+  facet_wrap(drug ~ exp_pool)
+
+```
+#### Figure legend
+
+
+# Tentative heterochomatin domains with clone... 
+```{r LMNA LBR het domains}
+trip_tib = trip_tib_2000 %>%
+  filter(exp_pool %in% c("mean_RSTP2_clone5_LBR2_DMSO_siNT_64", 
+                         "indel_LMNAKO_LBRKORep1_clone5_LBR2_LMNA_KO_1_72",
+                         "mean_RSTP2_clone5_LBR2_LMNA_KO_2_72",
+                         "mean_RSTP2_clone5_LBR2_LBR_KO_2_72",
+                         "mean_RSTP2_clone5_LBR2_LBR_KO_1_72")) %>%
+  distinct(barcode, exp_pool, .keep_all = TRUE)
 
 indel.dt = trip_tib %>%
-  dplyr::select(barcode, drug, MMEJ_MMEJNHEJ, domains) %>%
+  dplyr::select(barcode, drug, MMEJ_MMEJNHEJ, domains, LMNB1) %>%
   spread(drug, MMEJ_MMEJNHEJ) %>%
   filter(!is.na(LMNA_KO_1), !is.na(LMNA_KO_2)) %>%
   mutate(LMNA1 = LMNA_KO_1-DMSO,
@@ -576,9 +600,6 @@ plot_comb_grid(indel.dt, opt_df,
 plot_comb_grid(indel.dt, opt_df,
                    domain_levels, 'log2(LBR2)')
 
-# Ratio of SSTR vs MMEJ
-plot_comb_grid(indel.dt, opt_df,
-                   domain_levels, 'log2(GSK_ratio)')
 
 ### CHRIST ####
 # Can you now plot the ratio MMEJ_MMEJNHEJ of these domains that are significant vs the control condition to see the fold change and significance?
@@ -614,7 +635,115 @@ color_vec = c('DMSO'='grey50', 'LBR_KO_2'='black')
 
 plot_comb_grid(LBR_KO_2.dt, opt_df, domain_levels, 'MMEJ_MMEJNHEJ', group_by='condition', color=color_vec)
 ```
-#### Figure legend
+
+### LMNA KO and LBR KO MMEJ ratio difference vs control in LADs
+```{r LMNA LBR KO difference in LADS}
+
+ratio_KO <- indel.dt %>% gather(DMSO, LBR_KO_1, LBR_KO_2, LMNA_KO_1, LMNA_KO_2, key = "condition", value = "ratio")
+
+for(i in c("LBR_KO_1",
+           "LBR_KO_2",
+           "LMNA_KO_1",
+           "LMNA_KO_2")) {
+  pvals <- ratio_KO %>%
+    filter(condition %in% c("DMSO", i)) %>%
+    do(broom::tidy(t.test(ratio ~ condition, data = .))) %>%
+    ungroup() %>%
+    mutate(p.adj = p.adjust(p.value, method = "fdr")) # %>%
+    # dplyr::select(condition,conf.low, conf.high, p.value, p.adj) %>%
+    # arrange(p.adj)
+  print(i)
+  print(pvals)
+}
+
+indel.dt %>% gather(DMSO, LBR_KO_1, LBR_KO_2, LMNA_KO_1, LMNA_KO_2, key = "condition", value = "ratio") %>% 
+ggplot(., aes(LMNB1, ratio))  +  
+  geom_point() +
+  geom_smooth(method= "lm") + 
+  theme_bw(base_size = 16) + 
+  stat_cor(method = "pearson") +
+  facet_wrap( ~ condition, scales = "free_y", ncol = 3)
+
+indel.dt %>% gather(LMNA1, LMNA2, LBR1, LBR2, key = "condition", value = "ratio") %>% 
+ggplot(., aes(LMNB1, ratio))  +  
+  geom_point() +
+  geom_smooth(method= "lm") + 
+  theme_bw(base_size = 16) + 
+  stat_cor(method = "pearson") +
+  ylab("KO MMEJ ratio - CTRL MMEJ ratio") +
+  facet_wrap( ~ condition, scales = "free_y")
+
+indel.dt %>% gather(LMNA1, LMNA2, LBR1, LBR2, key = "condition", value = "ratio") %>% 
+    group_by(condition) %>%
+    do(broom::tidy(t.test(ratio ~ LAD, data = .))) %>%
+    ungroup() %>%
+    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
+    dplyr::select(condition,conf.low, conf.high, p.value, p.adj) %>%
+    arrange(p.adj)
+
+indel.dt %>% gather(LMNA1, LMNA2, LBR1, LBR2, key = "condition", value = "ratio") %>% 
+ggplot(., aes(LAD, ratio))  +  
+  geom_boxplot(outlier.colour="red", outlier.shape=8,
+                outlier.size=4) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  theme_bw(base_size = 16) + 
+  ylab("KO MMEJ ratio - CTRL MMEJ ratio") +
+  facet_wrap( ~ condition)
+
+
+```
+
+
+### LMNA KO and LBR KO MMEJ ratio vs control in LADs
+```{r LMNA LBR KO ratio in LADS}
+indel.dt = trip_tib %>%
+  dplyr::select(barcode, drug, MMEJ_MMEJNHEJ, domains, LMNB1) %>%
+  spread(drug, MMEJ_MMEJNHEJ) %>%
+  filter(!is.na(LMNA_KO_1), !is.na(LMNA_KO_2)) %>%
+  mutate(LMNA1 = LMNA_KO_1 / DMSO,
+         LMNA2 = LMNA_KO_2 / DMSO,
+         LBR1 = LBR_KO_1 / DMSO,
+           LBR2 = LBR_KO_2 / DMSO) %>%
+  distinct(barcode, .keep_all = TRUE) %>%
+  data.table()
+
+
+indel.dt %>% gather(DMSO, LBR_KO_1, LBR_KO_2, LMNA_KO_1, LMNA_KO_2, key = "condition", value = "ratio") %>% 
+ggplot(., aes(LMNB1, ratio))  +  
+  geom_point() +
+  geom_smooth(method= "lm") + 
+  theme_bw(base_size = 16) + 
+  stat_cor(method = "pearson") +
+  ylab("KO MMEJ ratio / CTRL MMEJ ratio") +
+  facet_wrap( ~ condition, scales = "free_y", ncol = 3)
+
+indel.dt %>% gather(LMNA1, LMNA2, LBR1, LBR2, key = "condition", value = "ratio") %>% 
+ggplot(., aes(LMNB1, log(ratio)))  +  
+  geom_point() +
+  geom_smooth(method= "lm") + 
+  theme_bw(base_size = 16) + 
+  stat_cor(method = "pearson") +
+  ylab("KO MMEJ ratio / CTRL MMEJ ratio") +
+  facet_wrap( ~ condition, scales = "free_y")
+
+indel.dt %>% gather(LMNA1, LMNA2, LBR1, LBR2, key = "condition", value = "ratio") %>% 
+    group_by(condition) %>%
+    do(broom::tidy(t.test(ratio ~ LAD_domain, data = .))) %>%
+    ungroup() %>%
+    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
+    dplyr::select(condition,conf.low, conf.high, p.value, p.adj) %>%
+    arrange(p.adj)
+
+indel.dt %>% gather(LMNA1, LMNA2, LBR1, LBR2, key = "condition", value = "ratio") %>% 
+ggplot(., aes(LAD_domain, log(ratio)))  +  
+  geom_boxplot(outlier.colour="red", outlier.shape=8,
+                outlier.size=4) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  theme_bw(base_size = 16) + 
+  ylab("KO MMEJ ratio / CTRL MMEJ ratio") +
+  facet_wrap( ~ condition)
+```
+
 
 ### Panel F
 ```{r pathways vs chrom ssODN DMSO, fig.height=8, fig.width=9}
@@ -686,7 +815,7 @@ ggplot(pathway_distribution,
 
 
 pathway_distribution <- trip_tib_2000 %>% 
-  filter(cell_line == "RSTP2_clone5", plasmid == "LBR2", time %in% c(64,72), siRNA %in% c("siNT", "-")) %>%
+  filter(cell_line == "RSTP2_clone5", plasmid == "LBR2", time %in% c(64,72), siRNA %in% c("siNT", "-"), sum_reads > 5000) %>%
   gather(NHEJ, MMEJ, SSTR, other_indels, 
          key = "pathway", value = 'ratios') %>% 
   arrange(dplyr::desc(ratios))
@@ -707,7 +836,7 @@ ggplot(pathway_distribution,
   ylab("Pathway Contribution") +
   scale_fill_manual("legend", values = colores) +
   ggtitle("Pathway contribution per barcode") +
-  facet_wrap(~ drug)
+  facet_wrap(~ exp_pool)
 ```
 
 ### Panel H

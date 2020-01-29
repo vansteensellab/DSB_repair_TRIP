@@ -182,6 +182,7 @@ table(mutationintegrations$pool)
 ```
 
 ### Figure legend
+*(a)* Chromosome maps of the mapped IPR locations of both pools that passed the mutagenesis assay cutoff. 
 
 ## Panel 2B
 ```{r Fig2B indel spectra, fig.height=6, fig.width=10}
@@ -196,8 +197,8 @@ ggplot(filter(trip_tib_mut, drug == "-", mutation != "ssODN"),
 ```
 
 ### Figure legend 
-
-
+*(b)* Indel frequency for each mutation for all the barcode from *a*. Gray = wildtype sequence, red = non homologous end-joining, blue = microhomology-mediated end-joining, black = other indels.
+-
 ## Panel 2C
 ```{r Fig2C individual barcodes, fig.height=5, fig.width=7}
 set.seed(2)
@@ -207,8 +208,8 @@ barcodeset <- sample(barcodes, 6)
 NHEJratio <- filter(trip_tib, barcode %in% barcodeset, exp_pool == "mean_RSTP2_2000_LBR2_64") %>% 
   distinct(barcode, .keep_all = T) %>% 
   dplyr::select(barcode, NHEJ_MMEJ, efficiency) %>% 
-  mutate(label_efficiency = paste0("Efficiency = ", round(efficiency, 2),"%"), 
-         label_ratio = paste0("Ratio = ", round(NHEJ_MMEJ, 2)),
+  mutate(label_efficiency = paste0("Efficiency = ", round(efficiency*100, 1),"%"), 
+         label_ratio = paste0("Ratio = ", round(NHEJ_MMEJ, 1)),
          label = paste0("IPR ", seq(1, 6)))
 
 colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
@@ -230,6 +231,9 @@ p <- ggplot(bc_mut_tib,
   scale_x_discrete(name="Indel size", breaks = c("<-15", -7, 0, 1, ">3"))
 p + facet_wrap( ~ label, ncol = 3)
 ```
+### Figure Legend
+*(c)* Indel frequency of 6 randomly selected barcodes from (b). Ratio represents the ratio of +1 / -7 indel frequency. 
+
 # Supplementary Figure 1
 
 ## Panel S1A
@@ -252,6 +256,7 @@ mutationintegrations %>% group_by(mapping) %>% dplyr::summarise(count = n())
 mutationintegrations %>% group_by(pool, mapping) %>% dplyr::summarise(count = n())
 ```
 ### Figure Legend
+*(a)* Chromosome maps of the mapped IPR locations per pool and in the clone. Black = mapped IPRs that did not pass the mutagenesis cutoff, red = mapped IPRs with sufficient mutagenesis data (as in Figure 2a).
 
 ## Panel S1B
 <!-- start Christ -->
@@ -293,6 +298,7 @@ pheatmap(chom_df[order_vec,], cluster_rows=F, annotation_row=clustering,
 ```
 <!-- end Christ -->
 ### Figure Legend
+*(b)* Heatmap of the Z-scores of the chromatin features for each IPR in clone5. Z-scores were calculated using the ChIP signals for all the IPRs in the pool. IPRs were clusterd based on the z-scores. IPR numbering is unrelated to figure (2c).  
 
 ## Panel S1C
 ```{r FigS1C all indels, fig.height=5, fig.width=12}
@@ -308,6 +314,7 @@ trip_tib_mut_all_selection %>%
 ```
 
 ### Figure legend
+*(c)* Log10 meadian frequency of all the barcodes for all the indels from (2b). 
 
 # Supplementary Figure 2
 
@@ -352,7 +359,7 @@ trip_tib_mut_filt <- trip_tib_mut_all %>%
                            "mean_RSTP2_2000_LBR2_NU7441_64")) %>%
   group_by(mutation, drug)
 
-ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug, alpha = 0.5)) +
+ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
   geom_quasirandom(dodge.width=1) +
   theme_bw(base_size = 16) +
   scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
@@ -360,6 +367,7 @@ ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug, alpha = 0.5)) +
 trip_tib_mut_filt %>% dplyr::summarise(mean = mean(freq))
 ```
 ### Figure legend
+*(a)* Frequency of +1 and -7 indels for all the barcodes in the pools with DMSO control (black, mean of n = 6) or the DNAPKcs inhibitor NU7441 (1uM, gray, mean of n = 5). **** = adjusted p. value < 0.0001. 
 
 ## Panel S2B
 ```{r FigS2B NU7441 in the pool, fig.height=6, fig.width=5}
@@ -436,6 +444,7 @@ ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
 ```
 
 ### Figure legend 
+*(b)* Frequency of +1 and -7 indels for the median of all the barcodes in the pools in each replicate with DMSO control (black, n = 6) or the DNAPKcs inhibitor NU7441 (1uM, gray, n = 5). * = adjusted p. value < 0.05, ** = adjusted p. value < 0.01. 
 
 <!-- ### Panel H -->
 <!-- ```{r pathway contribution with siRNA per barcode, } -->
@@ -449,8 +458,59 @@ ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
 <!--   facet_grid(drug ~ pathway) -->
 <!-- ``` -->
 
-## Panel S2C
-```{r FigS2C pathways with siRNA, }
+```{r FigS2C M3814 in the clone, fig.height=6, fig.width=5}
+barcodes_clone_DMSO <- trip_tib_mut_all %>% filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_DMSO_72") %>% pull(barcode) %>% unique
+barcodes_clone_M3814 <- trip_tib_mut_all %>% filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_3814_1uM_72") %>% pull(barcode) %>% unique
+
+barcode_clone5 <- Reduce(intersect, list(barcodes_DMSO,
+                       barcodes_NU7441)) %>% unique()
+
+trip_tib_mut_filt <- trip_tib_mut_all %>% 
+  filter(barcode %in% barcode_clone5) %>% 
+  filter(exp_pool %in% c("indel_M3814_Rep1_clone5_LBR2_DMSO_72", 
+                         "indel_M3814_Rep1_clone5_LBR2_3814_1uM_72"))
+
+trip_mut_lbr2_clone_M3814_diff <- trip_tib_mut_filt  %>%
+  dplyr::select("barcode", "mutation", "freq", "exp_pool", "color") %>%
+  spread(exp_pool, freq) %>%
+  filter(!is.na(indel_M3814_Rep1_clone5_LBR2_3814_1uM_72), 
+         !is.na(indel_M3814_Rep1_clone5_LBR2_DMSO_72)) %>%
+  gather(indel_M3814_Rep1_clone5_LBR2_3814_1uM_72, 
+         indel_M3814_Rep1_clone5_LBR2_DMSO_72, 
+         key = "exp_pool", value = "freq") %>%
+  mutate(mutation = as.character(mutation)) %>%
+  dplyr::select(-barcode, -color) %>% 
+  group_by(mutation)
+
+mutations <- trip_mut_lbr2_clone_M3814_diff %>% group_by(mutation) %>% dplyr::summarise(count = n()) %>% filter(count > 10) %>% pull(mutation)
+
+trip_mut_lbr2_clone_M3814_diff %>% filter(mutation %in% mutations) %>%
+  do(broom::tidy(t.test(freq ~ exp_pool, data = .))) %>%
+  ungroup() %>%
+  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
+ dplyr::select(mutation, p.value, p.adj) %>%
+  arrange(p.adj)
+
+trip_tib_mut_filt <- trip_tib_mut_all %>%
+  filter(mutation %in% c("-7", "1") &
+           exp_pool %in% c("indel_M3814_Rep1_clone5_LBR2_DMSO_72",
+                           "indel_M3814_Rep1_clone5_LBR2_3814_1uM_72")) %>%
+  group_by(mutation, drug)
+
+trip_tib_mut_filt$drug <- factor(trip_tib_mut_filt$drug, levels = c("DMSO", "3814_1uM"))
+
+ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
+  geom_quasirandom(dodge.width=1) +
+  theme_bw(base_size = 16) +
+  scale_color_manual(values = c("DMSO" = "black", "3814_1uM" = "gray"))
+
+trip_tib_mut_filt %>% dplyr::summarise(mean = mean(freq))
+```
+### Figure legend 
+*(b)* Frequency of +1 and -7 indels for each barcode in clone5 with DMSO control (black, n = 1) or the DNAPKcs inhibitor M3814 (1uM, gray, n = 1). **** = adjusted p. value < 0.0001. 
+
+## Panel S2D
+```{r FigS2D pathways with siRNA, }
 siRNAexps <- trip_tib_2000 %>% filter(replicate %in% c('mean'), siRNA != "-", cell_line == "RSTP2_clone5", plasmid == "LBR2", time == 64) %>% pull(exp_pool) %>% unique()
 
 trip_lbr2_siRNA <- trip_tib_2000 %>%
@@ -526,9 +586,10 @@ ggplot(trip_tib_mut_filt, aes(si_ratio, log2(ratio), color = mutation)) +
 ```
 
 ### Figure legend
+*(d)* Log2 ratio of the frequencies for -7 deletion, +1 insertion and ssODN integration in siRNA treatment over non-target siRNA control treatment. Adjusted p-values for target versus non-target indel frequency. *** = adjusted p. value < 0.001, **** = adjusted p. value < 0.0001. 
 
-## Panel S2D
-```{r FigS2D pathway contribution with siRNA, }
+## Panel S2E
+```{r FigS2E pathway contribution with siRNA, }
 trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA %>%
   gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>%
   distinct(barcode, siRNA, pathway, drug, .keep_all = TRUE)
@@ -561,6 +622,7 @@ p + scale_fill_manual("legend", values = colori) +
 ```
 
 ### Figure legend
+*(e)* Total abundance of each pathway with the different siRNA treatments over all barcodes in clone5. Red = NHEJ (+1), blue = MMEJ (-7), green = SSTR (ssODN), black = all other indels. Left is DMSO treatment, right NU7441 treatment (1uM). 
 
 # Session Info
 ```{r}
