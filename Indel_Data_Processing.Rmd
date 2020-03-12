@@ -86,7 +86,7 @@ library(tibble)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20200123
+in.dir.date = 20200303
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 ```
 
@@ -104,8 +104,8 @@ MeanExperiments <- function(mutdt) {
   reads = mutdt[, 
                 list(cells = mean(cells), # The average number of theoretical cells. 
                      cells_tot = sum(cells), # The total number of theoretical cells.
-                     sum_bc_reads = sum(sum_bc_reads),# The total barcode reads.
-                     mean_bc_reads = mean(sum_bc_reads),  # The average barcode reads. 
+                     sum_bc_reads = sum(sum_bc_reads), # The total barcode reads.
+                     mean_bc_reads = mean(sum_bc_reads), # The average barcode reads. 
                      nexp = length(unique(exp))), # The amount of replicates this barcode was found in for this mean experiment.
                 by=c("barcode")]
 
@@ -129,7 +129,7 @@ Data import from mapping. These files were generated on 30.09.2018, with a minim
 ```{r import}
 # Import files in list and make individual tables
 # I use this if all the samples are good. Here however I do not use all the samples.
-file.list <- list.files("/DATA/projects/DSBrepair/data/rs20190730_TRIP/indelPCR_counts/",
+file.list <- list.files("/DATA/projects/DSBrepair/data/rs20200221_TRIP/indelPCR_counts/",
                                      pattern="_.*[.]count", full.names=T)
 
 # import the data
@@ -150,13 +150,15 @@ n.samples <- length(df.list)
 load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
 
 # Read metadata file
-metadata <- read.table("/DATA/projects/DSBrepair/config/cl20200108_metadata_Repair_TRIP.tsv", 
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200226_metadata_Repair_TRIP.txt", 
                        header = TRUE, 
                        stringsAsFactors = FALSE) %>% 
-  dplyr::select(-file, -run, -GCF, -index_length) %>%
+  dplyr::select(-file, -run, -index_length) %>%
   filter(PCR_type == "indelPCR") %>%
   # mutate(group = paste("mean", cell_line, plasmid, drug, ssODN, siRNA, time, sep = "_")) %>%
   data.table() 
+
+
 
 # This is a manually curated list of mapped integrations for clone 5
 # with specific PCRs and manually going though the iPCR data.
@@ -207,7 +209,7 @@ mut.list = mclapply(names(df.list), function(exp){
   dt[, mutation := as.character(mutation)]
   dt = dt[mutation != "Inf"]
   dt[type == "ssODN" & mutation == "2", mutation := "ssODN"]
-  pool = gsub("indel_.*_([AB]|clone5)_.*", "\\1", exp)
+  pool = gsub("indel_.*_([AB]|clone5|clones[AB])_.*", "\\1", exp)
   dt[,barcode := paste(barcode, pool, sep = ".")]
   sum_count = data.table(exp = exp,
                          dt[, list(count=sum(count)),
@@ -219,6 +221,7 @@ mut.list = mclapply(names(df.list), function(exp){
 
 ```{r}
 mutations.dt = do.call(rbind, c(mut.list, fill = T))
+
 dim(mutations.dt)
 
 # Remove Run number from exp name and sum the read counts for these experiments.
@@ -249,7 +252,28 @@ I found out that some barcodes overlap in A and B but do not have the same integ
 
 
 ```{r}
-mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc, clone9bc, clone5barcodes) & replicate %in% c("LBR2GSKBIXRep2", "LBR2ssODNRep3", "clonesiRNARep1", "clonesiRNARep2") & mutation %in% c(Inf, -82, -81))]
+# Some demultiplexing issues with short PCR (interpreted as -81/82 deletions) that were only from clone5 or 9.
+mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc, 
+                                                      clone9bc, 
+                                                      clone5barcodes) & 
+                                         replicate %in% c("LBR2GSKBIXRep2", 
+                                                          "LBR2ssODNRep3", 
+                                                          "clonesiRNARep1", 
+                                                          "clonesiRNARep2") & 
+                                         mutation %in% c(Inf, -82, -81)
+                                       )
+                                     ]
+
+# Demulitplexing error with sequences including clone5. They have clear pattern of LBR2 mutation when cut with LBR12 or with GFP (negative control). 
+mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc, 
+                                                      clone5barcodes) & 
+                                         replicate %in% c("NewGuidesM3814Rep1", 
+                                                          "NewGuidesM3814Rep2", 
+                                                          "LBR2M3814Rep1", 
+                                                          "LBR2M3814Rep2")
+                                       )
+                                     ]
+
 ```
 
 
@@ -346,7 +370,7 @@ filt.map.mutations.dt <- filt.mutations.dt %>%
   data.table()
 dim(filt.map.mutations.dt)
 
-filt.map.mutations.dt[,norm:=count/sum(count), by=exp,]
+filt.map.mutations.dt[, norm:=count/sum(count), by=exp,]
 ```
 
 
@@ -370,8 +394,18 @@ filt.map.mutations.dt[,norm:=count/sum(count), by=exp,]
 map.meta.mutations.dt = copy(filt.map.mutations.dt)
 dim(map.meta.mutations.dt)
 
-map.meta.mutations.dt[, cell_line := ifelse(pool %in% c("A", "B"), "RSTP2_2000", ifelse(pool %in% c("clone5"), "RSTP2_clone5", "-"))]
-map.meta.mutations.dt[, group := paste("mean", cell_line, plasmid, drug, ssODN, siRNA, time, sep = "_")]
+map.meta.mutations.dt[, cell_line := ifelse(pool %in% c("A", "B"), "RSTP2_2000", 
+                                            ifelse(pool %in% c("clone5"), "RSTP2_clone5", "-"))
+                      ]
+map.meta.mutations.dt[, group := paste("mean", 
+                                       cell_line, 
+                                       plasmid, 
+                                       drug, 
+                                       ssODN, 
+                                       siRNA, 
+                                       time, 
+                                       sep = "_")
+                      ]
 
 # Let"s make the mean of all the replicates with the MeanExperiments function
 mean.mutations.dt = map.meta.mutations.dt[,MeanExperiments(.SD), by=c("group")]
@@ -379,34 +413,74 @@ mean.mutations.dt = map.meta.mutations.dt[,MeanExperiments(.SD), by=c("group")]
 mean.mutations.dt = mean.mutations.dt[nexp > 1] # Barcodes have to be present in at least 2 experiments for the mean.
 meanmetadata = copy(metadata)
 meanmetadata[, cell_line := ifelse(pool %in% c("A", "B"), "RSTP2_2000", ifelse(pool %in% c("clone5"), "RSTP2_clone5", "-"))]
-meanmetadata[ ,c("ID", 
+
+meanmetadata[ , c("ID", 
                  "replicate", 
                  "No",
                  "pool",
-                 "group") := 
+                 "group",
+                 "GCF",
+                 "seq_barcode",
+                 "seq_index") := 
                 list(NULL,  
                      "mean", 
                      0, 
                      gsub("^[AB]", "AB", pool), 
                      paste("mean", cell_line, plasmid, drug, ssODN, siRNA, time, 
-                           sep = "_"))
+                           sep = "_"),
+                     NA,
+                     NA,
+                     NA)
               ]
 meanmetadata = unique(meanmetadata)
 
-colnames(mean.mutations.dt)
+# colnames(mean.mutations.dt)
 
 sep.mutations.dt = map.meta.mutations.dt[, c("group", "cells_tot", "mean_bc_reads", "sd_norm", "nexp") :=
                         list(NULL, NA, NA, NA, 1)]
-# colnames(sep.mutations.dt)
 
 # add metadata to mean mutations.
 mean.mutations.dt = mean.mutations.dt[meanmetadata, on = "group"]
 mean.mutations.dt = mean.mutations.dt[barcode != "<NA>"]
 setnames(mean.mutations.dt, old = "group", new = "exp")
 
-# Merge both single and mean data tables
-all.mutations.dt <- rbind(sep.mutations.dt, mean.mutations.dt)
+```
 
+```{r experiment specific controls}
+## GSK DMSO experiments
+gsk.mutations.dt = map.meta.mutations.dt[replicate %in% c("LBR2GSKBIXRep1", "LBR2GSKBIXRep2", "LBR2GSKBIXRep3") & drug == "DMSO", ]
+
+gsk.mutations.dt[, group := paste("mean", 
+                                       cell_line, 
+                                       plasmid, 
+                                       drug, 
+                                       ssODN, 
+                                       siRNA, 
+                                       time, 
+                                       sep = "_")
+                      ]
+
+mean.bixgsk.dt = gsk.mutations.dt[,MeanExperiments(.SD), by=c("group")]
+mean.bixgsk.dt = mean.bixgsk.dt[nexp > 1]
+
+# add metadata to mean mutations.
+mean.bixgsk.dt = mean.bixgsk.dt[meanmetadata, on = "group"]
+
+mean.bixgsk.dt = mean.bixgsk.dt[barcode != "<NA>"]
+mean.bixgsk.dt[, drug := "DMSO_GSK"]
+mean.bixgsk.dt[, group := gsub("_DMSO_", "_DMSOGSK_", group)]
+
+setnames(mean.bixgsk.dt, old = "group", new = "exp")
+```
+
+
+```{r merging all data}
+# Merge both single and mean data tables
+all.mutations.dt <- do.call(rbind, list(sep.mutations.dt, mean.mutations.dt, mean.bixgsk.dt))
+```
+
+
+```{r calculate frequencies}
 all.mutations.dt[,freq := norm/sum(norm), 
                  by = c("barcode","exp")]
 all.mutations.dt[!mutation%in%c(0,NA), 
@@ -417,21 +491,23 @@ all.mutations.dt[,sum_reads:=sum(count) , by=c("exp")] # Get the sum of all the 
 
 
 
+
 ```{r conditions}
 all.mutations.dt[, PCR_type := NULL] # remove PCR_type colmn
-all.mutations.dt[, exp_pool := gsub("_-{1,4}", "", exp)]
-all.mutations.dt[, exp_pool := gsub("_[AB]_", "_", exp_pool)]
+all.mutations.dt[, exp_pool := gsub("_-{1,4}", "", exp, perl = TRUE)]
+all.mutations.dt[, exp_pool := gsub("_[AB]_", "_", exp_pool, perl = TRUE)]
 setnames(all.mutations.dt, "No", "no") # rename No to no
 
  # remove the .clone5 from the barcode and change it to .B (that's the origin pool of this clone)
-all.mutations.dt[, "barcode" := gsub(".clone5", ".B", barcode, perl = TRUE)]
+all.mutations.dt[, "barcode" := gsub(".clone5|.clones[AB]", ".B", barcode, perl = TRUE)]
 
 # reorder in convenient way
 setcolorder(all.mutations.dt, c("exp", "exp_pool", "barcode", "nexp", "no",
                                "replicate", "cell_line", "pool", "plasmid", "time", "drug",
-                               "ssODN", "siRNA", "sum_reads", "mean_bc_reads", "sum_bc_reads", 
-                               "cells", "cells_tot", "mutation", "count", "norm", "sd_norm",
-                               "ratio_indels", "freq"))
+                               "ssODN", "siRNA", "GCF","seq_barcode","seq_index", 
+                               "sum_reads", "mean_bc_reads", "sum_bc_reads",
+                               "cells", "cells_tot", "mutation", "count", "norm",
+                               "sd_norm", "ratio_indels", "freq"))
 ```
 
 ```{r color guide}
@@ -477,11 +553,12 @@ large.indels.dt = rbind(mutations.large.del.dt, mutations.large.ins.dt)
 
 large.indels.dt[mutation %in% c(">3", "<-15"), color := "other"]
 
-setcolorder(large.indels.dt,c("exp", "barcode", "nexp", "no",
-                              "replicate",  "cell_line", "pool", "plasmid", "time", "drug",
-                              "ssODN", "siRNA", "sum_reads", "mean_bc_reads", "sum_bc_reads", "cells", "cells_tot", 
-                              "mutation", "count",
-                              "ratio_indels", "freq", "norm", "sd_norm"))
+setcolorder(large.indels.dt,c("exp", "exp_pool", "barcode", "nexp", "no",
+                               "replicate", "cell_line", "pool", "plasmid", "time", "drug",
+                               "ssODN", "siRNA", "GCF","seq_barcode","seq_index", 
+                               "sum_reads", "mean_bc_reads", "sum_bc_reads",
+                               "cells", "cells_tot", "mutation", "count", "norm",
+                               "sd_norm", "ratio_indels", "freq"))
 all.mutations.sep.dt = copy(all.mutations.dt)
 dim(all.mutations.sep.dt)
 all.mutations.trunc.dt = rbind(all.mutations.sep.dt, large.indels.dt)

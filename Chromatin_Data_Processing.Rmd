@@ -54,7 +54,7 @@ library(stringr)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20200124
+in.dir.date = 20200305
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 dir.create(out.dir, showWarnings = FALSE)
@@ -235,6 +235,10 @@ trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode"
 trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
 ```
 
+### Remove K9me3 data
+```{r removing K9me3 dataa}
+trip_tib <- dplyr::select(trip_tib, !c("H3K9me3", "H3K9me3_domain"))
+```
 
 
 # Conclusions
