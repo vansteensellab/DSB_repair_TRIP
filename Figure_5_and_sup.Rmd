@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20200121
+in.dir.date = 20200226
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -96,14 +96,13 @@ feature_color = c(insulator="black", repressive="white", euchromatin="black",
                   transcribing="black", HDAC="black", accessibility='black',
                   methylation='black')
 
-clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2',
-                                    'H3K9me3', 'H3K27me3', 'EZH2', 'CTCF', 'SMC3',
+clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2','H3K27me3', 'EZH2', 'CTCF', 'SMC3',
 							        'HDAC3', 'HDAC2', 'HDAC1', 'H3K4me1',
 								    'H3K4me2', 'H3K4me3', 'H3K27ac',
 								    'H4K5acK8ac', 'H2AFZ', 'DNAse', 'Dam', 'm5C',
 								    'H3K79me2', 'TTseq', 'H3K36me3', 'POL2AS2',
 								    'POL2'),
-					   group=factor(c(rep('repressive', 6), rep('insulator', 2),
+					   group=factor(c(rep('repressive', 5), rep('insulator', 2),
 				                      rep('HDAC', 3), rep('euchromatin', 6),
                                       rep('accessibility', 2), 'methylation',
 						              rep('transcribing', 5)),
@@ -373,6 +372,7 @@ plot_MARS_bayes <- function(left_set, right_set, none_label='ambiguous',
 		                layout_matrix=layout, top=top))
 }
 
+
 cor_test <- function(y, X, left, right){
     cor_list = lapply(X, function(x){
         cor.test(x,y)
@@ -440,7 +440,24 @@ get_combinations <- function(domain_vec){
     return(opt_df)
 }
 
-plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_count=Inf){
+test_wilcox <- function(dt, group_by='condition', y_name='MMEJ_MMEJNHEJ'){
+    bc_vec = dt[,unique(barcode)]
+    name1 = unlist(unique(dt[,group_by, with=F])[1])
+    dt_c = dt[get(group_by)==eval(name1), ]
+    dt_s = dt[get(group_by)!=eval(name1), ]
+    setkey(dt_c, 'barcode')
+    setkey(dt_s, 'barcode')
+
+    w = wilcox.test(unlist(dt_c[bc_vec,..y_name]),
+                    unlist(dt_s[bc_vec,..y_name]),
+                    paired=T)
+    return(list(p_value = w$p.value))
+}
+
+
+
+plot_comb_grid <- function(bix.dt, opt_df, domains, y_name, min_count=0,
+                           max_count=Inf, group_by=NULL, color=NULL){
 
     opt_melt = reshape2::melt(opt_df)
     colnames(opt_melt) = c('group', 'domain', 'is_in')
@@ -454,8 +471,8 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_c
     	in_vec = domains[opt]
     	out_vec = domains[!opt]
 
-    	in_sum = rowSums(indel.dt[,..in_vec])
-    	out_sum = rowSums(indel.dt[,..out_vec])
+    	in_sum = rowSums(bix.dt[,..in_vec])
+    	out_sum = rowSums(bix.dt[,..out_vec])
     	if (length(in_vec)==0){
     		in_group = which(out_sum == 0)
     	} else if (length(out_vec) == 0){
@@ -469,18 +486,24 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_c
     names(group_list) = rownames(opt_df)
     for (opt_name in names(group_list)){
     	i_vec = group_list[[opt_name]]
-    	indel.dt[i_vec, group := opt_name]
+    	bix.dt[i_vec, group := opt_name]
     }
-    group_count_df = data.frame(indel.dt[,table(group)])
+    if (is.null(group_by)){
+        group_count_df = data.frame(bix.dt[,table(group)])
+    } else {
+        group_count_df = data.frame(bix.dt[,table(group)/length(unique(get(group_by)))])
+    }
     group_count_df = group_count_df[order(match(group_count_df$group, rownames(opt_df))),]
+    # print(group_count_df)
     group_count_sel = group_count_df[group_count_df$Freq>=min_count,]
     group_count_sel = group_count_sel[group_count_sel$Freq<=max_count,]
     group_levels =  group_count_sel$group
     opt_sel = opt_melt[opt_melt$group %in% group_levels, ]
 
     opt_sel$group = factor(opt_sel$group, levels=group_levels)
+    # print(opt_sel)
 
-    indel_selection = indel.dt[group%in%group_levels, ]
+    indel_selection = bix.dt[group%in%group_levels, ]
     indel_selection[,group:=factor(group, levels=group_levels)]
 
     # wilcox_list = lapply(group_levels[group_levels!='iDomain'],
@@ -505,7 +528,7 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_c
     	theme_bw() +
     	scale_color_manual(values=c('in'='black', 'out'='grey70')) +
     	guides(color=FALSE)  +
-    	geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    	geom_vline(xintercept=seq(1.5, length(unique(bix.dt$group))-0.5, 1),
     			   lwd=0.5, colour="grey90") +
     	theme(axis.title=element_blank(),
     		  axis.text=element_blank(),
@@ -513,26 +536,52 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_c
     		  panel.grid.major = element_blank())
 
     symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
-                  symbols = c("****", "***", "**", "*", ""))
+                  symbols = c("****", "***", "**", "*", " "))
 
-    beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
-    			  geom_quasirandom(width=0.3) +
+
+    if (is.null(group_by)){
+      beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
+        geom_quasirandom(width=0.3) +
+        stat_summary(fun.y=median, fun.ymin = median,
+                     fun.ymax = median,
+                     geom="crossbar", width = 0.5,
+                     color='red') +
+        stat_compare_means(aes(label = ..p.signif..),
+                           symnum.args = symnum,
+                           method = 'wilcox.test',
+                           ref.group='iDomain')
+    } else {
+        wilcox_dt = indel_selection[,test_wilcox(.SD, group_by, y_name),
+                                    by='group']
+        wilcox_dt[,p_adj:=p.adjust(p_value)]
+        wilcox_dt[,p_signif:=symnum(p_adj, cutpoints=symnum$cutpoints,
+                                    symbols=symnum$symbols)]
+
+
+        beeswarm = ggplot(indel_selection,
+                          aes_string(x='group', y=y_name, color=group_by)) +
+        			   geom_quasirandom(dodge.width=1) +
+                       scale_color_manual(values=color) +
+                       stat_summary(aes_string(group=group_by), fun.y=median,
+                                    fun.ymin = median, fun.ymax = median,
+                                    geom="crossbar", width = 0.5,
+                                    color='red',
+                                    position= position_dodge(width =1)) +
+                       geom_text(data=wilcox_dt, aes(x=group, y=0.8, label=p_signif),
+                                 inherit.aes=F)
+    }
+    beeswarm = beeswarm +
     			  theme_bw() +
-    			  geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
+    			  geom_vline(xintercept=seq(1.5, length(unique(bix.dt$group))-0.5, 1),
     			             lwd=0.5, colour="grey90") +
-                  stat_summary(fun.y=median, fun.ymin = median,
-                               fun.ymax = median, geom="crossbar", width = 0.5,
-                               color='red') +
-                  stat_compare_means(aes(label = ..p.signif..),
-                                     symnum.args = symnum,
-                                     ref.group='iDomain') +
     			  theme(axis.title=element_blank(),
     			        axis.text.x=element_blank(),
       				    panel.grid.major.x = element_blank(),
     				    axis.ticks.x=element_blank())
 
+
     count = data.frame(domain=gsub('_domain', '', domains),
-    	               count=colSums(indel.dt[,..domains], na.rm=T))
+    	               count=colSums(bix.dt[,..domains], na.rm=T))
 
     count$domain = factor(count$domain, levels=domain_levels)
 
@@ -560,7 +609,6 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0, max_c
                      axis='tlbr'))
 }
 
-
 ```
 
 # Data import
@@ -577,10 +625,10 @@ trip_tib_mut <- copy(trip_tib_2000)
 trip_tib_2000 <- trip_tib_2000 %>% distinct(barcode, exp, .keep_all = TRUE)
 
 trip_tib <- trip_tib_2000 %>% 
-  filter(exp_pool  %in% c("indel_mean_LBR2_DMSO_64h", "indel_mean_LBR2_NU7441_64h", "indel_mean_LBR2_ssODN_DMSO_64h", "indel_mean_LBR2_ssODN_NU7441_64h"))
+  filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
 
 trip_tib_mut <- trip_tib_mut_2000 %>%
-  filter(exp_pool %in% c("indel_mean_LBR2_DMSO_64h", "indel_mean_LBR2_NU7441_64h", "indel_mean_LBR2_ssODN_DMSO_64h", "indel_mean_LBR2_ssODN_NU7441_64h"))
+  filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
 
 mean_trip_tib_2000 <- trip_tib_2000 %>% 
   gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>% 
@@ -598,14 +646,26 @@ Add loading here I guess.
 
 ## Panel 5B
 ```{r Fig5B indel distribution ssODN, fig.height=4, fig.width=7}
-ggplot(filter(trip_tib_mut, drug == "DMSO", ssODN == "ssODN"), 
+ggplot(filter(trip_tib_mut, exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64"), 
        aes(mutation, freq, color = color)) + 
   geom_quasirandom() + 
   theme_bw(base_size = 16) + 
   theme(legend.position = c(0.2, 0.6)) +
   scale_color_manual("legend", values = colory)
 
-trip_tib_mut %>% filter(drug == "DMSO", ssODN == "ssODN") %>% group_by(mutation) %>% dplyr::summarise(median = median(freq)) %>% arrange(desc(median))
+trip_tib_mut %>% 
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>% 
+  group_by(mutation) %>% 
+  dplyr::summarise(median = median(freq)) %>% 
+  arrange(dplyr::desc(median))
+
+trip_tib_mut %>% 
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>% 
+  pull(barcode) %>% 
+  unique() %>% 
+  length()
+
+
 ```
 ###  Figure legend
 
@@ -615,10 +675,10 @@ trip_tib_pathways <- trip_tib %>%
   gather(NHEJ, MMEJ, other_indels, SSTR, key = "pathway", value = 'ratios') %>% 
   distinct(barcode, exp, pathway, .keep_all = TRUE)
 
-exp_order <- c("indel_mean_LBR2_DMSO_64h", 
-               "indel_mean_LBR2_ssODN_DMSO_64h",
-                "indel_mean_LBR2_NU7441_64h", 
-               "indel_mean_LBR2_ssODN_NU7441_64h")
+exp_order <- c("mean_RSTP2_2000_LBR2_DMSO_64", 
+              "mean_RSTP2_2000_LBR2_NU7441_64", 
+              "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", 
+              "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")
 
 trip_tib_pathways$pathway <- factor(trip_tib_pathways$pathway, levels=c("other_indels", "MMEJ", "SSTR", "NHEJ"))
 trip_tib_pathways$exp_pool <- factor(trip_tib_pathways$exp_pool, levels=exp_order)
@@ -632,10 +692,10 @@ p <- ggplot(pathway_contribution, aes(exp_pool, pathway_contr, fill = pathway, o
   geom_bar(stat = "identity", position = "fill")  + 
   theme_bw(base_size = 16)
 p + scale_fill_manual("legend", values = colores) + 
-  scale_x_discrete(labels=c("indel_mean_LBR2_DMSO_64h" = "DMSO",
-                            "indel_mean_LBR2_ssODN_DMSO_64h" = "ssODN + DMSO",
-                            "indel_mean_LBR2_NU7441_64h" = "NU7441",
-                            "indel_mean_LBR2_ssODN_NU7441_64h" = "ssODN + NU7441")) +
+  scale_x_discrete(labels=c("mean_RSTP2_2000_LBR2_DMSO_64" = "DMSO",
+                            "mean_RSTP2_2000_LBR2_NU7441_64" = "ssODN + DMSO",
+                            "mean_RSTP2_2000_LBR2_DMSO_ssODN_64" = "NU7441",
+                            "mean_RSTP2_2000_LBR2_NU7441_ssODN_64" = "ssODN + NU7441")) +
   labs(x = element_blank(),
        y = "abundance")
 
@@ -699,11 +759,7 @@ ggplot(trip_lbr2_ssODN_MMEJ, aes(`-`, ssODN)) +
        y = "MMEJ ssODN") +
   stat_poly_eq(aes(label = paste(..rr.label..)), 
        label.x.npc = "right", label.y.npc = 0.15,
-       formula = formula, parse = TRUE, size = 5)+ 
-  stat_fit_glance(method = 'lm',
-        method.args = list(formula = formula),
-        aes(label = paste("P-value = ", signif(..p.value.., digits = 4), sep = "")),
-        size = 5) +
+       formula = formula, parse = TRUE, size = 5) + 
   stat_cor(method = "pearson", label.x = 0, label.y = .3)
 ```
 ###  Figure legend
@@ -735,11 +791,11 @@ trip_tib %>%
 ```{r Fig5F pathways vs chrom ssODN DMSO, fig.height=8, fig.width=9}
 chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 
-SSTR.hist.corr <- CorrelationDFMean(trip_tib, "indel_mean_LBR2_ssODN_DMSO_64h", "NHEJ", targets = chrom.mods.cols) %>% 
+SSTR.hist.corr <- CorrelationDFMean(trip_tib, "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "NHEJ", targets = chrom.mods.cols) %>% 
   arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
  
 lims = 1
-CorrelationPlotMean(trip_tib, "indel_mean_LBR2_ssODN_DMSO_64h", c("NHEJ", "MMEJ", "SSTR", "other_indels") , targets = SSTR.hist.corr)
+CorrelationPlotMean(trip_tib, "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", c("NHEJ", "MMEJ", "SSTR", "other_indels") , targets = SSTR.hist.corr)
 ```
 
 ### Figure legend
@@ -748,11 +804,11 @@ CorrelationPlotMean(trip_tib, "indel_mean_LBR2_ssODN_DMSO_64h", c("NHEJ", "MMEJ"
 ```{r Fig5G SSTR ratio per heterochomatin domain, fig.height=6, fig.width=10}
 tib.dt = data.table(trip_tib)
 
-domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
 
 domains = paste0(domain_levels, '_domain')
 
-indel.dt = unique(tib.dt[exp_pool == "indel_mean_LBR2_ssODN_DMSO_64h",  
+indel.dt = unique(tib.dt[exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64",  
                          c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR',
                            domains), with=F])
 
@@ -769,7 +825,7 @@ opt_df = get_combinations(domain_levels)
 
 
 # Ratio of SSTR vs all indels
-plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
                    domain_levels, 'SSTR', min_count = 20)
 
 ```
@@ -780,15 +836,15 @@ plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
 ```{r Fig5H SSTR_MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
 
 # Ratio of SSTR vs MMEJ
-plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
                    domain_levels, 'SSTR_MMEJSSTR', min_count = 20)
 ```
 
 
-# Supplementary Figure 5
+# Supplementary Figure 6
 
-## Panel S5A
-```{r FigS5A scatter NHEJ with and without ssODN, fig.height=5, fig.width=5}
+## Panel S6A
+```{r FigS6A scatter NHEJ with and without ssODN, fig.height=5, fig.width=5}
 trip_lbr2_ssODN_NHEJ <- trip_tib %>% filter(drug == "DMSO") %>% dplyr::select(barcode, ssODN, NHEJ, late_replicating) %>% spread(ssODN, NHEJ) 
 
 ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN)) + 
@@ -829,8 +885,8 @@ ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN)) +
 <!--   facet_wrap(pathway ~ exp_pool, ncol = 4, scales = "free_x") -->
 <!-- ``` -->
 
-## Panel S5B
-```{r FigS5B scatter other with and without ssODN, fig.height=5, fig.width=5}
+## Panel S6B
+```{r FigS6B scatter other with and without ssODN, fig.height=5, fig.width=5}
 trip_lbr2_ssODN_other <- trip_tib %>% filter(drug == "DMSO") %>% dplyr::select(barcode, ssODN, other_indels, late_replicating) %>% spread(ssODN, other_indels) 
 
 ggplot(trip_lbr2_ssODN_other, aes(`-`, ssODN)) + 
@@ -838,7 +894,6 @@ ggplot(trip_lbr2_ssODN_other, aes(`-`, ssODN)) +
   theme_bw(base_size = 16) + 
   geom_abline(slope = 1)  + 
   geom_smooth(method = glm) +
-  xlim(0.1, .4) + ylim(0.1, .4)  + 
   labs(title = "other - vs other + ssODN in DMSO condition", 
        x = "other ssODN -", 
        y = "other ssODN +") +
@@ -853,8 +908,8 @@ ggplot(trip_lbr2_ssODN_other, aes(`-`, ssODN)) +
 ```
 
 
-## Panel S5C
-```{r FigS5C scatterplot pathways vs lmnb1 and K4me1 ssODN, fig.height=12, fig.width=6}
+## Panel S6C
+```{r FigS6C scatterplot pathways vs lmnb1 and K4me1 ssODN, fig.height=12, fig.width=6}
 trip_tib %>% 
   filter(drug == "DMSO", ssODN == "ssODN") %>% 
   dplyr::select(barcode, MMEJ, NHEJ, other_indels, SSTR, late_replicating, H3K4me1) %>% 
@@ -870,12 +925,12 @@ trip_tib %>%
 ```
 ### Figure legend
 
-## Panel S5D
-```{r FigS5D mars bayes sstr, fig.height=12, fig.width=12}
+## Panel S6D
+```{r FigS6D mars bayes sstr, fig.height=12, fig.width=12}
 chip.dt = readRDS('/DATA/projects/DSBrepair/data/R/cl20191217_ChIP_mean_selection.RDS')
 indel.dt = data.table(trip_tib_2000)
 
-indel_selection_64.dt = unique(indel.dt[exp=='indel_mean_LBR2_ssODN_DMSO_64h',
+indel_selection_64.dt = unique(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64',
 			                         	c('barcode', 'SSTR_MMEJSSTR')])
 
 indel_chip.dt = merge(indel_selection_64.dt, chip.dt,
@@ -932,15 +987,15 @@ plot_MARS_bayes(bayes_set_64, MARS_set_64, none_label = 'ambiguous',
 
 ### Figure legend
 
-## Panel S5E
-```{r FigS5E SSTR heterochrom domains, fig.height=10, fig.width=12}
+## Panel S6E
+```{r FigS6E SSTR heterochrom domains, fig.height=10, fig.width=12}
 tib.dt = data.table(trip_tib)
 
-domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K9me3', 'H3K27me3')
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
 
 domains = paste0(domain_levels, '_domain')
 
-indel.dt = unique(tib.dt[exp_pool == "indel_mean_LBR2_ssODN_DMSO_64h",  
+indel.dt = unique(tib.dt[exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64",  
                          c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR',
                            domains), with=F])
 
@@ -956,17 +1011,17 @@ colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 opt_df = get_combinations(domain_levels)
 
 # Ratio of SSTR vs all indels
-plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
                    domain_levels, 'SSTR')
 
 ```
 
 ### Figure legend
 
-## Panel S5F
-```{r FigS5F SSTR_MMEJ heterochrom domains, fig.height=10, fig.width=12}
+## Panel S6F
+```{r FigS6F SSTR_MMEJ heterochrom domains, fig.height=10, fig.width=12}
 # Ratio of SSTR vs MMEJ
-plot_comb_grid(indel.dt[exp_pool=='indel_mean_LBR2_ssODN_DMSO_64h'], opt_df,
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
                    domain_levels, 'SSTR_MMEJSSTR')
 ```
 
