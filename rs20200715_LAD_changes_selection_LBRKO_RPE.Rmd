@@ -1,0 +1,733 @@
+---
+title: "Figure 6 and supplemental 6"
+author: "Ruben Schep"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    theme: journal #cerulean
+    highlight: monochrome
+    toc: true
+    toc_float: true
+    code_folding: show
+  editor_options:
+    chunk_output_type: console
+---
+
+# knitr document van Steensel lab
+```{r}
+StartTime <-Sys.time()
+library(knitr)
+
+# 8-digit Date tag:
+Date <- substr(gsub("-","",Sys.time()),1,8)
+
+## Select outdir
+out.dir = paste0("figures/rs", Date, "/")
+dir.create(out.dir)
+opts_chunk$set(dev=c('png', 'pdf'), fig.path = file.path(out.dir))
+pdf.options(useDingbats = FALSE)
+```
+
+# Introduction
+
+## Description of Data
+
+# Data processing
+## Path, Libraries, Parameters and Useful Functions
+```{r setup, message=FALSE, warnings=FALSE}
+# INPUT DIRECTORY
+in.dir.date = 20200410
+in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
+
+# libraries:
+library(ggplot2)
+library(ggpubr)
+# library(reshape2)
+# library(tibble)
+# library(GenomicRanges)
+# library(rtracklayer)
+library(corrr)
+library(Hmisc)
+library(ggbeeswarm)
+library(RColorBrewer)
+library(data.table)
+library(dplyr)
+# library(plyr)
+library(tidyr)
+# library(stringr)
+# library(plotly)
+library(ggpmisc)
+library(glmnet)
+library(cowplot)
+library(mda)
+library(earth)
+library(yaml)
+library(vip)
+library(caret)
+library(scales)
+library(glmnet)
+library(gridExtra)
+library(ggcorrplot)
+library(bnlearn)
+library(pheatmap)
+library(ppcor)
+library(parallel)
+library(stringr)
+
+color_redblue <- rev(brewer.pal(11,"RdBu"))
+duocolor <- c("#EE756E", "#2BB6BE")
+colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
+colores <- c("wt" = "#808184", "other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
+colori  <- c("other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "ssODN" = "#007A4C")
+colora <- c("0" = "#808184", "1" = "#E1251B", "-7" = "#223DA0", "-14" = "#223DA0")
+coloru <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "MMEJplusNHEJplusHDR" = "#EE8A2A", "HDR" = "#007A4C", "MMEJplusHDR" = "#EE8A2A")
+colory <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "SSTR" = "#007A4C")
+
+measure_color = c(NHEJ='#e1251b', MMEJ='#26419a', SSTR='#007A4C', None='grey')
+
+method_color = c(MARS='#00bfc4', LASSO='#f8766d')
+lad_color <- c(LAD="#802cdc", iLAD="#dfaf2f")
+sign_color <- c(down="#AA6375", up="#7B9A36")
+
+feature_fill = c(insulator="#a6b5a3", repressive="#304441", euchromatin="#cda4cc",
+                 transcribing="#ED9114", HDAC="#aac9e0", accessibility='#cebc85',
+                 methylation='#7dc98f')
+
+feature_color = c(insulator="black", repressive="white", euchromatin="black",
+                  transcribing="black", HDAC="black", accessibility='black',
+                  methylation='black')
+
+clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2',
+                                    'H3K27me3', 'EZH2', 'CTCF', 'SMC3',
+                                    'HDAC3', 'HDAC2', 'HDAC1', 'H3K4me1',
+                                    'H3K4me2', 'H3K4me3', 'H3K27ac',
+                                    'H4K5acK8ac', 'H2AFZ', 'DNAse', 'Dam', 'm5C',
+                                    'H3K79me2', 'TTseq', 'H3K36me3', 'POL2AS2',
+                                    'POL2'),
+                        group=factor(c(rep('repressive', 5), rep('insulator', 2),
+                                       rep('HDAC', 3), rep('euchromatin', 6),
+                                       rep('accessibility', 2), 'methylation',
+                                       rep('transcribing', 5)),
+                                     levels=c('transcribing', 'accessibility',
+                                              'methylation', 'euchromatin',
+                                              'HDAC', 'insulator', 'repressive')))
+
+clone5barcodes <- c("AGGGCGTAAAATATTT.B",
+                    "TATGGCTGTCGGGTAG.B",
+                    "TGTCCCTTAGTACTTT.B",
+                    "AGAAAATAATATGACG.B",
+                    "CGGCCTGAAGGTCAGG.B",
+                    "TTGAACGCGGGCTCGG.B",
+                    "GCTAACATCACGAATC.B",
+                    "GCGCACCCTTTAATTG.B",
+                    "ACTGTCGAGTTGTCCG.B",
+                    "CCGGGGACGTATGCAC.B",
+                    "TCTTTTGAGGAGCTGA.B",
+                    "ATATCGTTGCTGGAGA.B",
+                    "CATCCACCACACTTCA.B",
+                    "ACCCCTAAAGGCGCTG.B",
+                    "ATACTATATTTAACGG.B",
+                    "CATTTCTGATCAATAA.B",
+                    "GAGCGCGTCACCGGGT.B",
+                    "GTACCTCTCGATAGTG.B",
+                    "TGGCCAATATTTGTCT.B")
+
+```
+
+### Custom functions
+Functions used thoughout this script.
+```{r functions, message=FALSE, warnings=FALSE}
+cor_test <- function(y, X, left, right){
+  cor_list = lapply(X, function(x){
+    cor.test(x,y)
+  })
+  p_vec = unlist(lapply(cor_list, function(x){x$p.value}))
+  cor_vec = unlist(lapply(cor_list, function(x){x$estimate}))
+  p_adj = p.adjust(p_vec)
+  color = ifelse(p_adj < 0.05, ifelse(cor_vec > 0, left, right),
+                 'None')
+  importance = abs(cor_vec)
+  target=factor(colnames(X), levels=rownames(clustering))
+  feature_group = clustering[colnames(X), ]
+  return(list(correlation=cor_vec,importance = importance, p=p_vec,
+              p_adj=p_adj, target=target, color=color,
+              feature_group=feature_group))
+}
+
+
+get_combinations <- function(domain_vec){
+  n_domain = length(domain_vec)
+  get_ivec <-function (last_x, n_domain){
+    if (last_x < n_domain){
+      i_vec = c(0, c((last_x+1):n_domain))
+    } else{
+      i_vec = c(0)
+    }
+  }
+  
+  combine <- function(x_new, x_vec, n_domain){
+    new_vec = c(x_vec, x_new)
+    if (length(new_vec)==n_domain){
+      return(new_vec)
+    } else {
+      i_vec = get_ivec(max(new_vec), n_domain)
+      x_list = lapply(i_vec, combine, x_vec=new_vec,
+                      n_domain=n_domain)
+      return(do.call(rbind, x_list))
+    }
+  }
+  
+  comb_list = lapply(c(0:n_domain), combine, x_vec=c(), n_domain=n_domain)
+  
+  comb = do.call(rbind, comb_list)
+  comb_df = unique(t(apply(comb, 1, function(x){x[order(x)]})))
+  
+  name_list = apply(comb_df, 1, function(x){
+    name = paste(domain_vec[x], collapse='-')
+    if (name == ''){
+      name = 'iDomain'
+    }
+    return(name)
+  })
+  
+  opt_list = lapply(domain_vec, function(d){
+    apply(comb_df, 1, function(x){
+      opt = domain_vec[x]
+      return(d%in%opt)
+    })
+  })
+  
+  opt_df = do.call(cbind, opt_list)
+  colnames(opt_df) = domain_vec
+  rownames(opt_df) = name_list
+  
+  return(opt_df)
+}
+
+test_wilcox <- function(dt, group_by='condition', y_name='MMEJ_MMEJNHEJ'){
+  bc_vec = dt[,unique(barcode)]
+  name1 = unlist(unique(dt[,group_by, with=F])[1])
+  dt_c = dt[get(group_by)==eval(name1), ]
+  dt_s = dt[get(group_by)!=eval(name1), ]
+  setkey(dt_c, 'barcode')
+  setkey(dt_s, 'barcode')
+  
+  w = wilcox.test(unlist(dt_c[bc_vec,..y_name]),
+                  unlist(dt_s[bc_vec,..y_name]),
+                  paired=T)
+  return(list(p_value = w$p.value))
+}
+
+
+
+plot_comb_grid_beeswarm <- function(dt, opt_df, domains, y_name, min_count=0,
+                                    max_count=Inf, group_by=NULL, color=NULL, y_plabel=c(-1.5, 1.5)){
+  
+  opt_melt = reshape2::melt(opt_df)
+  colnames(opt_melt) = c('group', 'domain', 'is_in')
+  
+  opt_melt$is_in = ifelse(opt_melt$is_in, 'in', 'out')
+  opt_melt$domain = factor(opt_melt$domain, levels=domains)
+  
+  
+  group_list = lapply(rownames(opt_df), function(opt_name){
+    opt = opt_df[opt_name, ]
+    in_vec = domains[opt]
+    out_vec = domains[!opt]
+    
+    in_sum = rowSums(dt[,..in_vec])
+    out_sum = rowSums(dt[,..out_vec])
+    if (length(in_vec)==0){
+      in_group = which(out_sum == 0)
+    } else if (length(out_vec) == 0){
+      in_group = which(in_sum==length(in_vec))
+    } else  {
+      in_group = which(in_sum == length(in_vec) & out_sum==0)
+    }
+    return(in_group)
+  })
+  
+  names(group_list) = rownames(opt_df)
+  for (opt_name in names(group_list)){
+    i_vec = group_list[[opt_name]]
+    dt[i_vec, group := opt_name]
+  }
+  if (is.null(group_by)){
+    group_count_df = data.frame(dt[,table(group)])
+  } else {
+    group_count_df = data.frame(dt[,table(group)/length(unique(get(group_by)))])
+  }
+  group_count_df = group_count_df[order(match(group_count_df$group, rownames(opt_df))),]
+  # print(group_count_df)
+  group_count_sel = group_count_df[group_count_df$Freq>=min_count,]
+  group_count_sel = group_count_sel[group_count_sel$Freq<=max_count,]
+  group_levels =  group_count_sel$group
+  opt_sel = opt_melt[opt_melt$group %in% group_levels, ]
+  
+  opt_sel$group = factor(opt_sel$group, levels=group_levels)
+  # print(opt_sel)
+  
+  indel_selection = dt[group%in%group_levels, ]
+  indel_selection[,group:=factor(group, levels=group_levels)]
+  
+  # wilcox_list = lapply(group_levels[group_levels!='iDomain'],
+  #                      function(g){
+  #                          x = indel_selection[group==g, y_name, with=F]
+  #                          y = indel_selection[group=='iDomain', y_name,
+  #                                              with=F]
+  #                          wilcox.test(unlist(x),unlist(y))
+  #                      })
+  
+  group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
+  
+  count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
+    geom_label() +
+    theme_void()
+  
+  
+  
+  dots = ggplot(opt_sel, aes(x=group, y=domain, color=is_in)) +
+    geom_point(size=2) +
+    geom_line(data=opt_sel[opt_sel$is_in=='in',], aes(group=group)) +
+    theme_bw() +
+    scale_color_manual(values=c('in'='black', 'out'='grey70')) +
+    guides(color=FALSE)  +
+    geom_vline(xintercept=seq(1.5, length(unique(dt$group))-0.5, 1),
+               lwd=0.5, colour="grey90") +
+    theme(axis.title=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(),
+          panel.grid.major = element_blank())
+  
+  symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
+                symbols = c("****", "***", "**", "*", " "))
+  
+  
+  if (is.null(group_by)){
+    beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
+      geom_quasirandom(width=0.3) +
+      stat_summary(fun.y=median, fun.ymin = median,
+                   fun.ymax = median,
+                   geom="crossbar", width = 0.5,
+                   color='red') +
+      stat_compare_means(aes(label = ..p.signif..),
+                         symnum.args = symnum,
+                         method = 'wilcox.test',
+                         ref.group='iDomain')
+    
+  } else {
+    wilcox_dt = indel_selection[,test_wilcox(.SD, group_by, y_name),
+                                by='group']
+    wilcox_dt[,p_adj:=p.adjust(p_value)]
+    wilcox_dt[,p_signif:=symnum(p_adj, cutpoints=symnum$cutpoints,
+                                symbols=symnum$symbols)]
+    
+    
+    beeswarm = ggplot(indel_selection,
+                      aes_string(x='group', y=y_name, color=group_by)) +
+      geom_quasirandom(dodge.width=1) +
+      scale_color_manual(values=color) +
+      stat_summary(aes_string(group=group_by), fun.y=median,
+                   fun.ymin = median, fun.ymax = median,
+                   geom="crossbar", width = 0.5,
+                   color='red',
+                   position= position_dodge(width =1)) +
+      geom_text(data=wilcox_dt, aes(x=group, y=0.8, label=p_signif),
+                inherit.aes=F)
+    print(wilcox_dt)
+  }
+  beeswarm = beeswarm +
+    theme_bw() +
+    geom_vline(xintercept=seq(1.5, length(unique(dt$group))-0.5, 1),
+               lwd=0.5, colour="grey90") +
+    theme(axis.title=element_blank(),
+          axis.text.x=element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.ticks.x=element_blank()) +
+    ylim(y_plabel)
+  
+  count = data.frame(domain=gsub('_domain', '', domains),
+                     count=colSums(dt[,..domains], na.rm=T))
+  
+  count$domain = factor(count$domain, levels=domain_levels)
+  
+  histogram = ggplot(count, aes(x=1, y=domain, label = count)) +
+    geom_label() +
+    theme_bw() +
+    theme(plot.background = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          axis.title=element_blank(),
+          axis.text.x=element_blank(),
+          axis.ticks=element_blank())
+  
+  empty = ggplot(data=data.frame(1,1),aes(x=1,y=1)) +
+    geom_point() +
+    theme_void()
+  
+  count_beeswarm = plot_grid(beeswarm, count_plot, ncol=1, rel_heights=c(20,1),
+                             align='v', axis='lr')
+  return(plot_grid(empty, beeswarm, empty, count_plot,
+                   histogram, dots, nrow=3,
+                   rel_widths=c(1,10), rel_heights=c(15,1,5), align='vh',
+                   axis='tlbr'))
+}
+
+
+PlotDataTracks <- function(bins, chr = "chr1", start = 1, end = 1e6, samples = NA, ipr_loc = 1, cols = NA) {
+  
+  # Get the data
+  data <- bins[seqnames(bins) == chr & 
+                 start(bins) >= start & 
+                 end(bins) <= end,]
+  
+  data <- as(data, "data.frame")
+  
+  if (any(!is.na(samples))) {
+    samplecols = which(colnames(data) %in% samples)
+    data <- data[, c(1:5, samplecols)]
+  } 
+  
+  # Melt the data
+  data.melt <- reshape2::melt(data, id.vars = c("seqnames", "start", "end", "width", "strand"))
+  data.melt <- data.melt[complete.cases(data.melt), ]
+  
+  # Plot the data
+  plt <- ggplot(data.melt, aes(xmin = start / 1e6, xmax = end / 1e6, ymin = 0, ymax = value,
+                               fill = variable)) +
+    geom_rect() +
+    geom_hline(yintercept = 0, size = 0.5) +
+    facet_grid(variable ~ .) +
+    xlab(paste0(chr, " (Mb)")) +
+    ylab("Score") +
+    geom_vline(xintercept = ipr_loc / 1e6) +
+    scale_x_continuous(expand = c(0, 0)) + 
+    scale_y_continuous(expand = c(0, 0)) +
+    scale_fill_manual(values = cols) +
+    theme_classic()
+  
+  plot(plt)
+  
+}
+```
+
+# Data import
+```{r import, message=FALSE, warnings=FALSE}
+load(paste0(in.dir, "RSTP2_Indel_Chromatin_2kb.RData"))
+load(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RData"))
+load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
+
+
+clone5_domains <- readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS")
+
+ipr_order = c("IPR16", "IPR6", "IPR14", "IPR7", "IPR17", "IPR13", 
+              "IPR8", "IPR9", "IPR12", "IPR11", "IPR2", "IPR10", 
+              "IPR1", "IPR18", "IPR4", "IPR15", "IPR5", "IPR19", 
+              "IPR3")
+
+clone5_domains[,IPR:=factor(IPR, levels=ipr_order)]
+```
+
+```{r import pAdamID data, message=FALSE, warnings=FALSE}
+# Load dependencies
+suppressMessages(suppressWarnings(library(GenomicRanges)))
+suppressMessages(suppressWarnings(library(rtracklayer)))
+#
+
+# Load the data sets required
+file_names <- c(#"LMNA_KO", 
+  "LMNA_KO1", "LMNA_KO2", "LMNA_KO3","LMNA_KO4",
+  #"LBR_KO", 
+  "LBR_KO1", "LBR_KO2", "LBR_KO3", "LBR_KO4",
+  "Clone5")
+
+# pAdam_dir = '/DATA/usr/t.v.schaik/proj/lamin_KO/ts200329_Ruben_clones_pADamID/results/tracks/normalized/bin-20kb/'
+# file_list = list.files(pAdam_dir, pattern='combined.bw', full.names=T)
+
+
+pAdam_dir = '/DATA/projects/DSBrepair/data/tracks_20200415/track/'
+file_list = list.files(pAdam_dir, pattern='20kb.bw', full.names=T)
+
+# LMNA_KO = import(file_list[])
+LMNA_KO1 = import(file_list[8]) 
+LMNA_KO2 = import(file_list[9])
+LMNA_KO3 = import(file_list[10])
+LMNA_KO4 = import(file_list[11])
+
+# LBR_KO = import(file_list[5])
+LBR_KO1 = import(file_list[4])
+LBR_KO2 = import(file_list[5])
+LBR_KO3 = import(file_list[6])
+LBR_KO4 = import(file_list[7])
+
+Clone5 = import(file_list[12])
+
+data_tracks <- list(#LMNA_KO, 
+  LMNA_KO1, LMNA_KO2,LMNA_KO3, LMNA_KO4,
+  #LBR_KO, 
+  LBR_KO1, LBR_KO2, LBR_KO3, LBR_KO4,
+  Clone5)
+names(data_tracks) <- file_names
+
+# Let's combine the various bigwig files into one
+# First, create a GRanges with all the bins
+bins <- read.table("/DATA/usr/t.v.schaik/proj/tests/results/ts180813_GCF5083_pADamIDtests/results/counts/bin-20kb/pADamID-Hap1_r4_Dam_semibad-Dam-20kb.counts.txt.gz",
+                   sep = "\t")[, 1:3]
+names(bins) <- c("seqnames", "start", "end")
+bins$start <- bins$start + 1
+bins <- as(bins, "GRanges")
+
+# Add the data
+mcols(bins)[, file_names] <- NA 
+
+for (i in file_names) {
+  track <- data_tracks[[i]]
+  ovl <- findOverlaps(track, bins)
+  mcols(bins)[subjectHits(ovl), i] <- (track$score[queryHits(ovl)] - mean(track$score)) / sd(track$score)
+}
+
+####### Do the same for RPE from Anna (Only LBR KO)
+
+# Load the data sets required
+file_names_RPE <- c("RPE_WT", "RPE_LBRKO")
+
+# pAdam_dir = '/DATA/usr/t.v.schaik/proj/lamin_KO/ts200329_Ruben_clones_pADamID/results/tracks/normalized/bin-20kb/'
+# file_list = list.files(pAdam_dir, pattern='combined.bw', full.names=T)
+
+
+pAdam_dir = '/DATA/usr/t.v.schaik/proj/tests/results/ts191202_GCF5762_AnnaRPE/results/tracks/normalized/bin-20kb/'
+file_list = list.files(pAdam_dir, pattern='RPE_[LBR2KO|wt].*-combined.bw', full.names=T)
+
+
+RPE_WT = import(file_list[2]) 
+RPE_LBRKO = import(file_list[1])
+
+data_tracks <- list(RPE_WT, RPE_LBRKO)
+names(data_tracks) <- file_names_RPE
+
+# Let's combine the various bigwig files into one
+# First, create a GRanges with all the bins
+
+# Add the data
+mcols(bins)[, file_names_RPE] <- NA 
+
+for (i in file_names_RPE) {
+  track <- data_tracks[[i]]
+  ovl <- findOverlaps(track, bins)
+  mcols(bins)[subjectHits(ovl), i] <- (track$score[queryHits(ovl)] - mean(track$score)) / sd(track$score)
+}
+
+# add mean of each KO for plotting
+bins$LMNA_KO = rowMeans(as(mcols(bins)[, c("LMNA_KO1", "LMNA_KO2", "LMNA_KO3", "LMNA_KO4")],"data.frame"), na.rm = T)
+bins$LBR_KO = rowMeans(as(mcols(bins)[, c("LBR_KO1", "LBR_KO2", "LBR_KO3", "LBR_KO4")],"data.frame"), na.rm = T)
+bins$dLBRKO = bins$LBR_KO-bins$Clone5
+bins$dLBRKO_RPE = bins$RPE_LBRKO-bins$RPE_WT
+```
+
+```{r christ damid data processing}
+dam_list = list.files('/DATA/projects/DSBrepair/data/tracks_20200415/dam/',
+                      pattern='clone_set-.*LMNB2-', full.names=T)
+
+file_dt = data.table(str_match(dam_list, '.*clone_set-([0-9]+).*-(.*).txt'))
+
+colnames(file_dt) = c('file', 'binsize', 'KO')
+file_dt[,binsize:=as.numeric(binsize)]
+
+dam_dt = file_dt[, fread(file,stringsAsFactors=F), by=c('binsize', 'KO')]
+```
+
+
+## Data loading
+
+```{r preprocess experiments}
+trip_tib_mut <- copy(trip_tib_2000)
+trip_tib_2000 <- trip_tib_2000 %>% distinct(barcode, exp, .keep_all = TRUE)
+
+trip_tib <- trip_tib_2000 %>%
+  filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_64",
+                          "mean_RSTP2_2000_LBR2_BIX01294_64",
+                          "mean_RSTP2_2000_LBR2_DMSOGSK_64",
+                          "mean_RSTP2_2000_LBR2_GSK126_64"))
+
+trip_tib_mut <- trip_tib_mut_2000 %>%
+  filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_64",
+                         "mean_RSTP2_2000_LBR2_BIX01294_64",
+                         "mean_RSTP2_2000_LBR2_DMSOGSK_64",
+                         "mean_RSTP2_2000_LBR2_GSK126_64"))
+
+mean_trip_tib_2000 <- trip_tib_2000 %>%
+  gather(NHEJ, MMEJ, other_indels, key = "pathway", value = 'ratios') %>%
+  distinct(barcode, exp, pathway, .keep_all = TRUE)
+
+mean_trip_tib_2000$pathway <- factor(mean_trip_tib_2000$pathway, levels=c("other_indels", "MMEJ", "NHEJ"))
+mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
+```
+# Figures
+## Main Figures
+
+
+```{r 6E, fig.height= 4, fig.width= 6}
+ko_group_colors = c("dLBRKO" = "#f9b016",
+                    "LBR_KO" = "#006c68",
+                    "Clone5" = "black")
+
+bins %>% as_tibble() %>% filter(dLBRKO > 2.5)
+
+PlotDataTracks(bins, 
+               chr = "chr2", 
+               start = 237120001-2e6, 
+               end = 237120001+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 237120001, cols = ko_group_colors)
+
+PlotDataTracks(bins, 
+               chr = "chr6", 
+               start = 168380001-2e6, 
+               end = 168380001+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 168380001, cols = ko_group_colors)
+
+PlotDataTracks(bins, 
+               chr = "chr10", 
+               start = 131000001-2e6, 
+               end = 131000001+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 131000001, cols = ko_group_colors)
+
+# potential target with indelphi : TCERG1L
+
+PlotDataTracks(bins, 
+               chr = "chr12", 
+               start = 114140001-2e6, 
+               end = 114140001+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 114140001, cols = ko_group_colors)
+
+# potential target with indelphi : TBX5
+
+PlotDataTracks(bins, 
+               chr = "chr20", 
+               start = 59280000-2e6, 
+               end = 59280000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 59280000, cols = ko_group_colors)
+
+
+bins %>% as_tibble() %>% filter(dLBRKO < -2)
+
+
+PlotDataTracks(bins, 
+               chr = "chr3", 
+               start = 85240001-1e7, 
+               end = 85240001+1e7,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 85240001, cols = ko_group_colors)
+
+
+PlotDataTracks(bins, 
+               chr = "chr5", 
+               start = 46060000-2e6, 
+               end = 46060000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 46060000, cols = ko_group_colors)
+
+PlotDataTracks(bins, 
+               chr = "chr14", 
+               start = 27460000-2e6, 
+               end = 27460000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 27460000, cols = ko_group_colors)
+
+PlotDataTracks(bins, 
+               chr = "chr14", 
+               start = 43180000-2e6, 
+               end = 43180000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 43180000, cols = ko_group_colors)
+
+
+PlotDataTracks(bins, 
+               chr = "chr14", 
+               start = 40820000-2e6, 
+               end = 40820000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 40820000, cols = ko_group_colors)
+
+
+PlotDataTracks(bins, 
+               chr = "chr19", 
+               start = 20600000-2e6, 
+               end = 20600000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 20600000, cols = ko_group_colors)
+
+
+PlotDataTracks(bins, 
+               chr = "chr21", 
+               start = 13360000-2e6, 
+               end = 13360000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 13360000, cols = ko_group_colors)
+
+
+PlotDataTracks(bins, 
+               chr = "chr21", 
+               start = 22700000-2e6, 
+               end = 22700000+2e6,
+               samples = c("dLBRKO", "LBR_KO", "Clone5"),
+               ipr_loc = 22700000, cols = ko_group_colors)
+```
+
+```{r 6E, fig.height= 4, fig.width= 6}
+ko_group_colors = c("dLBRKO_RPE" = "#f9b016",
+                    "RPE_LBRKO" = "#006c68",
+                    "RPE_WT" = "black")
+
+bins %>% as_tibble() %>% filter(dLBRKO_RPE > 2.8, RPE_LBRKO > 1, RPE_WT < -1)
+
+PlotDataTracks(bins, 
+               chr = "chr2", 
+               start = 216600001-2e6, 
+               end = 216600001+2e6,
+               samples = c("dLBRKO_RPE", "RPE_LBRKO", "RPE_WT"),
+               ipr_loc = 216600001, cols = ko_group_colors)
+
+
+
+PlotDataTracks(bins, 
+               chr = "chr8", 
+               start = 133140000-2e6, 
+               end = 133140000+2e6,
+               samples = c("dLBRKO_RPE", "RPE_LBRKO", "RPE_WT"),
+               ipr_loc = 133140000, cols = ko_group_colors)
+
+
+bins %>% as_tibble() %>% filter(dLBRKO_RPE < -1.6, RPE_LBRKO < -.8, RPE_WT > .8)
+
+PlotDataTracks(bins, 
+               chr = "chr3", 
+               start = 27980001-2e6, 
+               end = 27980001+2e6,
+               samples = c("dLBRKO_RPE", "RPE_LBRKO", "RPE_WT"),
+               ipr_loc = 27980001, cols = ko_group_colors)
+
+PlotDataTracks(bins, 
+               chr = "chr18", £
+               start = 2180001-2e6, 
+               end = 2180001+2e6,
+               samples = c("dLBRKO_RPE", "RPE_LBRKO", "RPE_WT"),
+               ipr_loc = 2180001, cols = ko_group_colors)
+
+
+```
+
+# Session Info
+```{r session info}
+paste("Run time: ",format(Sys.time()-StartTime))
+getwd()
+date()
+sessionInfo()
+# rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
+# gc() #free up memrory and report the memory usage.
+```

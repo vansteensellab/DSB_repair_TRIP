@@ -91,6 +91,7 @@ library(dplyr)
 library(GenomicRanges)
 library(RColorBrewer)
 library(ggplot2)
+library(tidyverse)
 
 # library(magrittr)
 
@@ -155,8 +156,26 @@ names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table",
 # Unlist the dataframes into separate dataframes (A.1, A.2, etc)
 list2env(mapping.list ,.GlobalEnv)
 
+# load the statistics data from the indels.
+file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20200221_TRIP/parsed/", pattern="indel*.*statistics.txt", full.names = TRUE)
+indel.statistics.list <- lapply(file.list, read.table, 
+                                  header = TRUE)
+names(indel.statistics.list)<- gsub(".*//indelPCR.indel_(.*?).statistics.txt", 
+                                      "\\1", 
+                                      file.list)
+# stats with index
+indel.statistics.list1 <- indel.statistics.list[which(lengths(indel.statistics.list) == 9)]
+# stats without index 
+indel.statistics.list2 <- indel.statistics.list[which(lengths(indel.statistics.list) == 8)]
+
+# make DF out of both
+indel.statistics.df1 <- do.call(rbind.data.frame, indel.statistics.list1)
+indel.statistics.df2 <- do.call(rbind.data.frame, indel.statistics.list2)
+# bind data frames without index column in df1
+indel.statistics.df <- rbind(indel.statistics.df1[, c(1,3, 7:9)], indel.statistics.df2[, c(1,3, 6:8)]) 
+
 # Load metadata
-metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200304_metadata_Repair_TRIP.txt", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200829_metadata_Repair_TRIP.txt", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 ## Some data pre-processing  
@@ -466,6 +485,42 @@ write.table(analysis.mapped.integrations.df,
 filename <- paste0(out.dir, "Analyis_Mapping_RSTP2_2000.RData")
 save(analysis.mapped.integrations.df, file = filename)
 ```
+
+## Indel data statistics
+```{r indel stats}
+indel.statistics.tib <- indel.statistics.df %>% 
+  rownames_to_column() %>% 
+  as_tibble() %>% 
+  mutate(discarded_reads = 1-reads_written/reads)
+
+exps <- indel.statistics.tib %>% pull(rowname) %>% unique()
+# select the used experiments
+used_exps <- exps[grep("Clone5GSKBIX|LBR2GSKBIXRep3|LBR2Rep1a|LBR2Rep1b|Perturb|LMNAKOold|MultiPlateTS|XV|siRNAPoolRep|GFP|noguide|88|92|96", exps, invert = T)]
+used_exps_fullname <- indel.statistics.tib$rowname[indel.statistics.tib$rowname %in% used_exps]
+
+
+indel.statistics.filtered.tib <- indel.statistics.tib %>% 
+  filter(rowname %in% used_exps_fullname) %>%
+  mutate(rowname = gsub("_Seq_Run[123]$", "", rowname, perl = TRUE)) %>% 
+  group_by(rowname) %>%
+  dplyr::summarise(sum_r = sum(reads),
+                   sum_rw = sum(reads_written)) %>% 
+  mutate(discarded_reads = 1-sum_rw/sum_r)
+
+
+
+ggplot(indel.statistics.tib, aes(discarded_reads)) + geom_histogram()
+ggplot(indel.statistics.filtered.tib, aes(discarded_reads)) + geom_histogram()
+
+min(indel.statistics.filtered.tib$discarded_reads)
+median(indel.statistics.filtered.tib$discarded_reads)
+max(indel.statistics.filtered.tib$discarded_reads)
+
+
+indel.statistics.filtered.tib %>% filter(discarded_reads > .3)
+```
+
+
 
 # Session Info  
 ```{r}

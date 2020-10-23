@@ -1,4 +1,4 @@
----
+--- 
 title: "Indels Preprocessing"
 author: "Ruben Schep"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
@@ -86,9 +86,9 @@ library(tibble)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20200303
+in.dir.date = 20200921
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
-```
+``` 
 
 ## Custom functions
 Functions used
@@ -96,8 +96,12 @@ Functions used
 ```{r functions}
 MeanExperiments <- function(mutdt) {
 
-  means = mutdt[, list(norm = mean(norm), # The mean of the frequency for all sequences.
-                       sd_norm = sd(norm), # The SD of the frequency
+  means = mutdt[, list(norm = mean(norm), # The mean of the normalized counts for all sequences.
+                       sd_norm = sd(norm), # The SD of the normalized counts (variability between exps)
+                       freq = mean(freq),
+                       sd_freq = sd(freq),
+                       ratio_indels = mean(ratio_indels),
+                       sd_ratio_indels = sd(ratio_indels),
                        count = sum(count)), # The sum of their reads
                 by=c("barcode", "mutation")]
 
@@ -150,7 +154,7 @@ n.samples <- length(df.list)
 load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
 
 # Read metadata file
-metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200226_metadata_Repair_TRIP.txt", 
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200829_metadata_Repair_TRIP.txt", 
                        header = TRUE, 
                        stringsAsFactors = FALSE) %>% 
   dplyr::select(-file, -run, -index_length) %>%
@@ -198,10 +202,10 @@ clone9bc <- c("GGTGGTGACGCCAAAG.B",
               "CTGTCCAGTTCGACAT.B")
 ```
 
-### Some data pre-processing
+# Data processing into large data table
 Set everything in a datafram that contains the barcodes, indel ratios, and efficiencies.
-
-```{r indeldataframe}
+## extract data to list of data tables
+```{r indel data table list}
 # To be able to setup the functions in a general way. This means in cases where we have A
 # and B samples.
 mut.list = mclapply(names(df.list), function(exp){
@@ -209,7 +213,7 @@ mut.list = mclapply(names(df.list), function(exp){
   dt[, mutation := as.character(mutation)]
   dt = dt[mutation != "Inf"]
   dt[type == "ssODN" & mutation == "2", mutation := "ssODN"]
-  pool = gsub("indel_.*_([AB]|clone5|clones[AB])_.*", "\\1", exp)
+  pool = gsub("indel_.*_([AB]|clone5|clones[AB])_.*", "\\1", exp, perl = TRUE)
   dt[,barcode := paste(barcode, pool, sep = ".")]
   sum_count = data.table(exp = exp,
                          dt[, list(count=sum(count)),
@@ -219,7 +223,14 @@ mut.list = mclapply(names(df.list), function(exp){
 ```
 
 
-```{r}
+## list of mapped barcodes
+```{r generating mapped barcode list}
+mapped_barcodes <- c(analysis.mapped.integrations.df$barcode, clone5barcodes)
+```
+
+
+## Combining data tables and adding metadata
+```{r bind data tables}
 mutations.dt = do.call(rbind, c(mut.list, fill = T))
 
 dim(mutations.dt)
@@ -232,9 +243,21 @@ metadata = distinct(metadata, ID,.keep_all = TRUE) # group seq runs here also
 
 # Sum all the seperate sequencing runs of the same samples
 mutations.dt = mutations.dt[,list(count = sum(count)) , by=c("barcode","exp", "mutation")] 
+dim(mutations.dt)
+# Filter the barcodes that are mapped, discard the unmapped barcodes
+nonmappedmutations.dt = mutations.dt[!barcode %in% mapped_barcodes]
+dim(mutations.dt)
+dim(nonmappedmutations.dt)
+mutations.dt = mutations.dt[barcode %in% mapped_barcodes]
+dim(mutations.dt)
+
+# Fill up the big data table to have 0 counts also, this will be easier to count the means and sds later on.
+complete.mutations.dt = mutations.dt %>% complete(mutation, nesting(exp, barcode), fill = list(count = 0)) %>% data.table()
+dim(complete.mutations.dt)
+sum(complete.mutations.dt$count)
 
 # Merge metadata with the mutation data table.
-mutationsmeta.dt = mutations.dt[metadata,on = c("exp" = "ID")]
+mutationsmeta.dt = complete.mutations.dt[metadata,on = c("exp" = "ID")]
 
 # Add group column to calculate means, this is done by grouping all
 # the different conditions together. 
@@ -244,16 +267,29 @@ dim(mutationsmeta.dt)
 # Clear out the global environment of these large lists
 # remove(mut.list)
 # remove(df.list)
+# remove(mutations.dt)
+
 ```
 
 Next we will work on a long dataframe that will include all the ratios (deletions, insertions, +1/-7 etc) for each barcode in each sample.
 
 I found out that some barcodes overlap in A and B but do not have the same integration sites (this has a very low chance). It would be a pitty to trash them, and I do not want to merge them as they are integrated in differente locations. I will name all the barcodes in A sample to "barcode".A and in B to "barcode".B. For this I will use the n.samples to pick out only A and only B data.
 
+# Processing
+## Filtering
+Some low efficient experiments and some issues with clone5 artefacts in pooled experiments. 
+```{r filtering}
+# There are some elements that will be filtered out, such as bad efficiency experiemnts, shifted barcodes, and infinite mutation calling.
+filtered.mutationsmeta.dt <- mutationsmeta.dt %>%
+  filter(!barcode %in% c("CATGAGTATTGGGACG.A", "CCCACCCAGCCCACGT.A", "TGTGTCAGTACTACCC.B", "CTCCAGCAGGACCATG.A")) %>%  # shifted barcode
+  filter(!replicate %in% c("LBR2GSKBIXRep3", "LBR2Rep1a", "LBR2Rep1b")) %>%  # remove low efficiency samples (below 70%) due to transfection efficiency.
+  filter(!is.na(mutation), mutation != Inf) %>% # remove NA in mutation, this is the not_clear row.
+  
+  data.table()
+dim(filtered.mutationsmeta.dt)
 
-```{r}
 # Some demultiplexing issues with short PCR (interpreted as -81/82 deletions) that were only from clone5 or 9.
-mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc, 
+filtered.mutationsmeta.dt <- filtered.mutationsmeta.dt[!(barcode %in% c(clone5bc, 
                                                       clone9bc, 
                                                       clone5barcodes) & 
                                          replicate %in% c("LBR2GSKBIXRep2", 
@@ -265,7 +301,7 @@ mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc,
                                      ]
 
 # Demulitplexing error with sequences including clone5. They have clear pattern of LBR2 mutation when cut with LBR12 or with GFP (negative control). 
-mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc, 
+filtered.mutationsmeta.dt <- filtered.mutationsmeta.dt[!(barcode %in% c(clone5bc, 
                                                       clone5barcodes) & 
                                          replicate %in% c("NewGuidesM3814Rep1", 
                                                           "NewGuidesM3814Rep2", 
@@ -276,18 +312,9 @@ mutationsmeta.dt <- mutationsmeta.dt[!(barcode %in% c(clone5bc,
 
 ```
 
-
-# Analysis
-
 Most of the samples that have a higher average point mutation count are the negative control samples.
 
-This all looks good to me. But before we continue let"s remove the barcode with the weird indels.
-
-```{r generating mapped barcode list}
-mapped_barcodes <- c(analysis.mapped.integrations.df$barcode, clone5barcodes)
-```
-
-
+## deciding cut off for with number of cells
 ```{r cell count for cutoff determination}
 # bc_count.dt = mutationsmeta.dt[, list(sum_bc_reads = sum(count)), by=c("exp", 'barcode')]
 # # We used approximately 600,000 cells per experiment in the PCRs (by amount of gDNA used)
@@ -351,26 +378,31 @@ mapped_barcodes <- c(analysis.mapped.integrations.df$barcode, clone5barcodes)
 
 ```
 
-```{r}
-dim(mutationsmeta.dt)
 
-bc_count.dt = mutationsmeta.dt[, list(sum_bc_reads = sum(count)), by=c("exp", 'barcode')]
+## apply cut off and filter for mapped barcodes
+
+```{r cut off and filter data}
+dim(filtered.mutationsmeta.dt)
+
+bc_count.dt = filtered.mutationsmeta.dt[, list(sum_bc_reads = sum(count)), by=c("exp", 'barcode')]
 
 # We used approximately 600,000 cells per experiment in the PCRs (by amount of gDNA used)
 bc_count.dt = bc_count.dt[, cells:=(sum_bc_reads/sum(sum_bc_reads))*600000, by='exp']
-filt.mutations.dt = mutationsmeta.dt[bc_count.dt[cells > 50, ], on = c("exp", "barcode")]
+filtered.mutations.dt = filtered.mutationsmeta.dt[bc_count.dt[cells > 50, ], on = c("exp", "barcode")]
 
-dim(filt.mutations.dt)
+dim(filtered.mutations.dt)
 
-filt.map.mutations.dt <- filt.mutations.dt %>%
-  filter(barcode %in% mapped_barcodes) %>% # select only mapped barcodes
-  filter(!barcode %in% c("CATGAGTATTGGGACG.A", "CCCACCCAGCCCACGT.A", "TGTGTCAGTACTACCC.B", "CTCCAGCAGGACCATG.A")) %>%  # shifted barcode
-  filter(!replicate %in% c("LBR2GSKBIXRep3", "LBR2Rep1a", "LBR2Rep1b")) %>%  # remove low efficiency samples (below 70%) due to transfection efficiency.
-  filter(!is.na(mutation), mutation != Inf) %>% # remove NA in mutation, this is the not_clear row.
-  data.table()
-dim(filt.map.mutations.dt)
+filtered.mutations.dt[, norm:=count/sum(count), by=exp,]
+```
+## Calculate frequencies
 
-filt.map.mutations.dt[, norm:=count/sum(count), by=exp,]
+```{r}
+filtered.mutations.dt[,freq := norm/sum(norm), 
+                 by = c("barcode","exp")]
+
+filtered.mutations.dt[!mutation%in%c(0,NA), 
+                 ratio_indels := norm/sum(norm), 
+                 by=c("barcode","exp")]
 ```
 
 
@@ -390,8 +422,12 @@ filt.map.mutations.dt[, norm:=count/sum(count), by=exp,]
 #         axis.ticks.x=element_blank())
 ```
 
+
+# Average experiments
+## Means 
+
 ```{r mean replicates}
-map.meta.mutations.dt = copy(filt.map.mutations.dt)
+map.meta.mutations.dt = copy(filtered.mutations.dt)
 dim(map.meta.mutations.dt)
 
 map.meta.mutations.dt[, cell_line := ifelse(pool %in% c("A", "B"), "RSTP2_2000", 
@@ -436,8 +472,8 @@ meanmetadata = unique(meanmetadata)
 
 # colnames(mean.mutations.dt)
 
-sep.mutations.dt = map.meta.mutations.dt[, c("group", "cells_tot", "mean_bc_reads", "sd_norm", "nexp") :=
-                        list(NULL, NA, NA, NA, 1)]
+sep.mutations.dt = map.meta.mutations.dt[, c("group", "cells_tot", "mean_bc_reads", "sd_norm", "sd_freq", "sd_ratio_indels", "nexp") :=
+                        list(NULL, NA, NA, NA, NA, NA, 1)]
 
 # add metadata to mean mutations.
 mean.mutations.dt = mean.mutations.dt[meanmetadata, on = "group"]
@@ -446,6 +482,7 @@ setnames(mean.mutations.dt, old = "group", new = "exp")
 
 ```
 
+## Experiment specific means
 ```{r experiment specific controls}
 ## GSK DMSO experiments
 gsk.mutations.dt = map.meta.mutations.dt[replicate %in% c("LBR2GSKBIXRep1", "LBR2GSKBIXRep2", "LBR2GSKBIXRep3") & drug == "DMSO", ]
@@ -471,27 +508,49 @@ mean.bixgsk.dt[, drug := "DMSO_GSK"]
 mean.bixgsk.dt[, group := gsub("_DMSO_", "_DMSOGSK_", group)]
 
 setnames(mean.bixgsk.dt, old = "group", new = "exp")
+
+## GSK DMSO experiments on clone 5
+gsk.mutations.c5.dt = map.meta.mutations.dt[replicate %in% c("Clone5GSKBIXRep1", "Clone5GSKBIXRep2", "Clone5GSKBIXRep3") & drug == "DMSO", ]
+
+gsk.mutations.c5.dt[, group := paste("mean", 
+                                       cell_line, 
+                                       plasmid, 
+                                       drug, 
+                                       ssODN, 
+                                       siRNA, 
+                                       time, 
+                                       sep = "_")
+                      ]
+
+mean.bixgsk.c5.dt = gsk.mutations.c5.dt[,MeanExperiments(.SD), by=c("group")]
+mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[nexp > 1]
+
+# add metadata to mean mutations.
+mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[meanmetadata, on = "group"]
+
+mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[barcode != "<NA>"]
+mean.bixgsk.c5.dt[, drug := "DMSO_GSK"]
+mean.bixgsk.c5.dt[, group := gsub("_DMSO_", "_DMSOGSK_", group)]
+
+setnames(mean.bixgsk.c5.dt, old = "group", new = "exp")
 ```
 
+## Merge means with singe experiments
 
 ```{r merging all data}
 # Merge both single and mean data tables
-all.mutations.dt <- do.call(rbind, list(sep.mutations.dt, mean.mutations.dt, mean.bixgsk.dt))
+all.mutations.dt <- do.call(rbind, list(sep.mutations.dt, mean.mutations.dt, mean.bixgsk.dt, mean.bixgsk.c5.dt))
 ```
 
+# Calculating frequencies and ratios 
 
+## Calcuate frequencies
 ```{r calculate frequencies}
-all.mutations.dt[,freq := norm/sum(norm), 
-                 by = c("barcode","exp")]
-all.mutations.dt[!mutation%in%c(0,NA), 
-                 ratio_indels := norm/sum(norm), 
-                 by=c("barcode","exp")]
 all.mutations.dt[,sum_reads:=sum(count) , by=c("exp")] # Get the sum of all the reads per exp
 ```
 
 
-
-
+## formatting
 ```{r conditions}
 all.mutations.dt[, PCR_type := NULL] # remove PCR_type colmn
 all.mutations.dt[, exp_pool := gsub("_-{1,4}", "", exp, perl = TRUE)]
@@ -507,9 +566,10 @@ setcolorder(all.mutations.dt, c("exp", "exp_pool", "barcode", "nexp", "no",
                                "ssODN", "siRNA", "GCF","seq_barcode","seq_index", 
                                "sum_reads", "mean_bc_reads", "sum_bc_reads",
                                "cells", "cells_tot", "mutation", "count", "norm",
-                               "sd_norm", "ratio_indels", "freq"))
+                               "sd_norm", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq"))
 ```
 
+## add a color code
 ```{r color guide}
 # Assign a color column with info on the pathway specific indels.
 all.mutations.dt[, color := "other"]
@@ -529,21 +589,24 @@ all.mutations.dt[mutation %in% c(-5, -8), color_LBR1 := "MMEJ"]
 # all.mutations.dt[, pool := gsub(".*[.]", "", barcode, perl = TRUE)]
 ```
 
+
+# Combining large indels for plotting
+## Combining large indels
 ```{r large indels}
 # Fix large deletions for every deletion above 25
 largedels <- as.character(seq(-130, -15))
-columnstokeep <- names(all.mutations.dt)[!names(all.mutations.dt) %in% c("count", "ratio_indels", "freq", "mutation", "color", "norm", "sd_norm")]
+columnstokeep <- names(all.mutations.dt)[!names(all.mutations.dt) %in% c("count", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq", "mutation", "color", "norm", "sd_norm")]
 
 mutations.large.del.dt = all.mutations.dt[mutation %in% largedels, ]
 mutations.large.del.dt = mutations.large.del.dt[, lapply(.SD, sum, na.rm=TRUE), by=c(columnstokeep),
-                                                .SDcols=c("count", "ratio_indels", "freq", "norm", "sd_norm")]
+                                                .SDcols=c("count", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq","norm", "sd_norm")]
 mutations.large.del.dt[, mutation:="<-15"]
 
 # Fix large insertions for every insertions above 3
 largeins <- as.character(seq(3, 20))
 mutations.large.ins.dt = all.mutations.dt[mutation %in% largeins, ]
 mutations.large.ins.dt = mutations.large.ins.dt[, lapply(.SD, sum, na.rm=TRUE), by=c(columnstokeep),
-                                                .SDcols=c("count", "ratio_indels", "freq", "norm", "sd_norm")]
+                                                .SDcols=c("count", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq","norm", "sd_norm")]
 mutations.large.ins.dt[, mutation:=">3"]
 
 mutations.large.del.dt
@@ -558,16 +621,16 @@ setcolorder(large.indels.dt,c("exp", "exp_pool", "barcode", "nexp", "no",
                                "ssODN", "siRNA", "GCF","seq_barcode","seq_index", 
                                "sum_reads", "mean_bc_reads", "sum_bc_reads",
                                "cells", "cells_tot", "mutation", "count", "norm",
-                               "sd_norm", "ratio_indels", "freq"))
+                               "sd_norm", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq"))
 all.mutations.sep.dt = copy(all.mutations.dt)
 dim(all.mutations.sep.dt)
-all.mutations.trunc.dt = rbind(all.mutations.sep.dt, large.indels.dt)
-all.mutations.trunc.dt
+all.mutations.trunc.dt = rbind(all.mutations.sep.dt, large.indels.dt) %>% filter(count != 0)
 all.mutations.trunc.dt = all.mutations.trunc.dt[!mutation %in% largedels, ]
 all.mutations.trunc.dt = all.mutations.trunc.dt[!mutation %in% largeins, ]
-all.mutations.trunc.dt
 dim(all.mutations.trunc.dt)
 ```
+
+## Formatting the combination
 
 ```{r}
 muts <- unique(all.mutations.dt$mutation)
@@ -585,10 +648,11 @@ all.mutations.trunc.dt$mutation <- factor(all.mutations.trunc.dt$mutation, level
 all.mutations.dt$mutation <- factor(all.mutations.dt$mutation, levels=indels.odn)
 ```
 
+## Save combinded data for indel mapping
 ```{r export seperate mutations}
 # The mutations list that can be loaded for the indel spectra plots.
-filename <- paste0(out.dir, "mutation_frequencies_trunc.RData")
-save(all.mutations.trunc.dt, file = filename)
+filename <- paste0(out.dir, "mutation_frequencies_trunc.RDS")
+saveRDS(all.mutations.trunc.dt, file = filename)
 ```
 
 We now have 3 data files that we can use for subsequent analysis.
@@ -596,11 +660,11 @@ We now have 3 data files that we can use for subsequent analysis.
 2. The indel data table of the read counts of the summed experiments.
 3. The indel data table of the percentaage/frequencies of each indel of the summed experiments.
 
-# Indel proportions data frame.
+# Indel and pathway proportions
 We will not calculate the +1 / -7 ratios, we will count the proportion of "-7" / ("-7"  + "+1"). I want to have the total insertions, total deletions and efficiences.
 ```{r calculate_ratios}
 # Make all the sums, pct and ratios :
-tib_ratios <-  as_tibble(all.mutations.dt)
+tib_ratios <-  as_tibble(all.mutations.dt) %>% filter(count != 0)
 
 MMEJ <- all.mutations.dt[mutation == -7, sum(ratio_indels) , by=c("barcode","exp")]
 tib_ratios <- full_join(tib_ratios, y = MMEJ, by = c("barcode","exp"))
@@ -669,19 +733,8 @@ large_ins <- all.mutations.dt[mutation%in%largeins, sum(ratio_indels) , by=c("ba
 tib_ratios <- full_join(tib_ratios, y = large_ins, by = c("barcode","exp"))
 names(tib_ratios)[ncol(tib_ratios)] <- "large_ins"
 
-MMEJ_LBR1 <- all.mutations.dt[mutation%in%c(-5, -8), sum(ratio_indels) , by=c("barcode","exp")]
-tib_ratios <- full_join(tib_ratios, y = MMEJ_LBR1, by = c("barcode","exp"))
-names(tib_ratios)[ncol(tib_ratios)] <- "MMEJ_LBR1"
 
-NHEJ_LBR1 <- all.mutations.dt[mutation%in%c(-6, -4, -3, -2, -1, 1), sum(ratio_indels) , by=c("barcode","exp")]
-tib_ratios <- full_join(tib_ratios, y = NHEJ_LBR1, by = c("barcode","exp"))
-names(tib_ratios)[ncol(tib_ratios)] <- "NHEJ_LBR1"
-
-tib_ratios
-
-tib_ratios = tib_ratios %>% mutate(NHEJ_MMEJ = NHEJ/MMEJ,
-                                   MMEJ_NHEJ = MMEJ/NHEJ,
-                                   ins_del = insertions/deletions,
+tib_ratios = tib_ratios %>% mutate(ins_del = insertions/deletions,
                                    MMEJ_MMEJNHEJ = MMEJ/(NHEJ+MMEJ),
                                    SSTR_MMEJSSTR = SSTR/(SSTR+MMEJ),
                                    SSTR_NHEJSSTR = SSTR/(SSTR+NHEJ))
@@ -693,12 +746,12 @@ tib_RSTP2_2000_mutations <- tib_ratios
 The files will be saved in the processed data folder.
 ```{r export}
 # The ratios data for the efficiency analysis
-filename <- paste0(out.dir, "total_indel_data.RData")
-save(tib_RSTP2_2000_mutations, file = filename)
+filename <- paste0(out.dir, "total_indel_data.RDS")
+saveRDS(tib_RSTP2_2000_mutations, file = filename)
 ```
-### Conclusions
+# Conclusions
 I"m happy with the output I"ve generated. I should still work on checking what the best amount of reads is that I need for correct correlations etc.
-### Session Info
+# Session Info
 ```{r session_info}
 sessionInfo()
 getwd()

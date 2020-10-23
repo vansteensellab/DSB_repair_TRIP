@@ -1,0 +1,234 @@
+---
+title: "Data Export OSF"
+author: "Ruben Schep"
+date: "30/04/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load data}
+# INPUT DIRECTORY
+in.dir.date = 20200410
+in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
+load(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RData"))
+load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
+clone5_domains <- readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS")
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r select experiments}
+filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
+filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_64", "mean_RSTP2_2000_LBR2_NU7441_64"))
+  filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_64",
+                          "mean_RSTP2_2000_LBR2_BIX01294_64",
+                          "mean_RSTP2_2000_LBR2_DMSOGSK_64",
+                          "mean_RSTP2_2000_LBR2_GSK126_64"))
+    filter(exp_pool %in% c("mean_RSTP2_2000_LBR1_DMSO_64",
+                         "mean_RSTP2_2000_LBR2_DMSO_64",
+                         "mean_RSTP2_2000_LBR12_DMSO_64",
+                         "mean_RSTP2_2000_LBR15_DMSO_64"))
+    
+trip_tib_2000 %>% filter(plasmid == "LBR2", 
+                         drug == "KOCTRL1",
+                         time %in% c(64, 72),
+                         # siRNA == "siCtIP",
+                         ssODN == "-",
+                         cell_line == "RSTP2_clone5"
+                         ) %>%
+  pull(exp_pool) %>% unique()
+
+chr.sites.TRIP <- analysis.mapped.integrations.df[ , c("seqname", "start", "ori", "barcode")]
+
+TRIP_data <- trip_tib_2000 %>% distinct(exp_pool, barcode, .keep_all = TRUE) %>%
+  filter(exp_pool %in% c(
+    # LBR1 DMSO
+    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR1_DMSO_64", 
+    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR1_DMSO_64",
+    "mean_RSTP2_2000_LBR1_DMSO_64",
+    # LBR12 DMSO
+    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR12_DMSO_64", 
+    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR12_DMSO_64",
+    "mean_RSTP2_2000_LBR12_DMSO_64",
+    # LBR15 DMSO
+    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR15_DMSO_64", 
+    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR15_DMSO_64",
+    "mean_RSTP2_2000_LBR15_DMSO_64",
+    # LBR2 DMSO
+    "indel_LBR2NU7441Rep1_LBR2_DMSO_64",
+    "indel_LBR2GSKBIXRep1_LBR2_DMSO_64",
+    "indel_LBR2ssODNRep1_LBR2_DMSO_64",
+    "indel_LBR2ssODNRep2_LBR2_DMSO_64",
+    "indel_LBR2GSKBIXRep2_LBR2_DMSO_64",
+    "indel_LBR2ssODNRep3_LBR2_DMSO_64",
+    "indel_LBR2M3814Rep1_RSTP2_2000_LBR2_DMSO_64",
+    "indel_LBR2M3814Rep2_RSTP2_2000_LBR2_DMSO_64",
+    "mean_RSTP2_2000_LBR2_DMSO_64",
+    # LBR2 -
+    "indel_LBR2Rep2_LBR2_64",
+    "indel_LBR2Rep3_LBR2_64",
+    "indel_LBR2Rep4a_LBR2_64",
+    "indel_LBR2Rep4b_LBR2_64",
+    "indel_LBR2Rep5_LBR2_64",
+    "indel_LBR2GSKBIXRep2_LBR2_64",
+    "mean_RSTP2_2000_LBR2_64",
+    # LBR 2 siRNA exps
+    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siRad51_64",
+    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siRad51_64",
+    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siRad51_64",
+    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siRad51_64",
+    "mean_RSTP2_clone5_LBR2_DMSO_siRad51_64",
+    "mean_RSTP2_clone5_LBR2_NU7441_siRad51_64",
+    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siNT_64",
+    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siNT_64",
+    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siNT_64",     
+    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siNT_64",
+    "mean_RSTP2_clone5_LBR2_DMSO_siNT_64",
+    "mean_RSTP2_clone5_LBR2_NU7441_siNT_64",
+    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siPolQ_64",
+    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siPolQ_64",
+    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siPolQ_64"  ,
+    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siPolQ_64",
+    "mean_RSTP2_clone5_LBR2_DMSO_siPolQ_64",            
+    "mean_RSTP2_clone5_LBR2_NU7441_siPolQ_64",
+    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siCtIP_64",
+    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siCtIP_64",
+    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siCtIP_64",
+    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siCtIP_64",
+    "mean_RSTP2_clone5_LBR2_DMSO_siCtIP_64",
+    "mean_RSTP2_clone5_LBR2_NU7441_siCtIP_64" ,
+    # BIX
+    "indel_LBR2GSKBIXRep1_LBR2_BIX0129_64",
+    "indel_LBR2GSKBIXRep2_LBR2_BIX0129_64",
+    "mean_RSTP2_2000_LBR2_BIX01294_64",
+    # GSK
+    "indel_LBR2GSKBIXRep1_LBR2_GSK126_64",
+    "indel_LBR2GSKBIXRep2_LBR2_GSK126_64",
+    "mean_RSTP2_2000_LBR2_GSK126_64",
+    # GSK DMSO
+    "mean_RSTP2_2000_LBR2_DMSOGSK_64",
+    # LMNA & LBR KO
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_1_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_1_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_1_64",
+    "mean_RSTP2_clone5_LBR2_LBR_KO_1_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_2_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_2_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_2_64",
+    "mean_RSTP2_clone5_LBR2_LBR_KO_2_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_3_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_3_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_3_64",
+    "mean_RSTP2_clone5_LBR2_LBR_KO_3_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_4_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_4_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_4_64",
+    "mean_RSTP2_clone5_LBR2_LBR_KO_4_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_1_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_1_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_1_64",
+    "mean_RSTP2_clone5_LBR2_LMNA_KO_1_64", 
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_2_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_2_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_2_64",
+    "mean_RSTP2_clone5_LBR2_LMNA_KO_2_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_3_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_3_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_3_64",
+    "mean_RSTP2_clone5_LBR2_LMNA_KO_3_64" ,
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_4_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_4_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_4_64",
+    "mean_RSTP2_clone5_LBR2_LMNA_KO_4_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_KOCTRL1_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_KOCTRL1_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_KOCTRL1_64",
+    "mean_RSTP2_clone5_LBR2_KOCTRL1_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_KOCTRL2_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_KOCTRL2_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_KOCTRL2_64",
+    "mean_RSTP2_clone5_LBR2_KOCTRL2_64",
+    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_KOCTRL3_64",
+    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_KOCTRL3_64",
+    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_KOCTRL3_64",
+    "mean_RSTP2_clone5_LBR2_KOCTRL3_64"
+  ))  %>% mutate(MMEJ_MMEJSSTR = 1 - SSTR_MMEJSSTR, 
+                 wild_type = 1 - efficiency) %>% 
+  left_join(chr.sites.TRIP, by = "barcode") %>%
+  dplyr::select(seqname, start, ori, barcode, exp_pool, wild_type, NHEJ, MMEJ, SSTR, MMEJ_MMEJNHEJ, MMEJ_MMEJSSTR)
+
+write.table(TRIP_data, file="/DATA/projects/DSBrepair/data/R/TRIP_data_DSB_repair_manuscript.tsv", quote=FALSE, sep='\t')
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+exp_eff <- trip_tib_2000 %>% filter(exp_pool == "indel_LBR2GSKBIXRep2_LBR2_64") %>% distinct(barcode, efficiency)
+
+tib_check <-trip_tib_2000 %>% filter(exp_pool %in% c("indel_LBR2GSKBIXRep2_GFP_64" , 
+                                         "indel_LBR2GSKBIXRep2_LBR2_64")) %>% distinct(barcode, exp_pool, .keep_all = T) %>% dplyr::select(barcode, plasmid, sum_bc_reads, LAD_domain, LMNB1, H3K4me1, pool) %>% spread(plasmid, sum_bc_reads) %>% mutate(ratio = LBR2/GFP) %>% left_join(exp_eff, by = "barcode")
+
+
+ggplot(tib_check, aes(GFP, LBR2, color = efficiency)) + geom_point() + facet_grid(~ pool)
+ggplot(tib_check, aes(ratio, fill = pool)) + geom_density()+ facet_grid(~ pool)
+
+exp_eff <- trip_tib_2000 %>% filter(exp_pool == "indel_LBR2ssODNRep3_LBR2_DMSO_64") %>% distinct(barcode, efficiency, MMEJ_MMEJNHEJ)
+
+
+bcs_dyingcells <- tib_check %>% filter(pool == "A", ratio < 5) %>% pull(barcode)
+
+
+tib_check <-trip_tib_2000 %>% filter(exp_pool %in% c("indel_LBR2ssODNRep3_GFP_DMSO_64" , 
+                                         "indel_LBR2ssODNRep3_LBR2_DMSO_64")) %>% 
+  distinct(barcode, exp_pool, .keep_all = T) %>% 
+  dplyr::select(barcode, plasmid, sum_bc_reads, LAD_domain, LMNB1, H3K4me1, pool) %>% 
+  spread(plasmid, sum_bc_reads) %>% 
+  mutate(ratio = LBR2/GFP, 
+         group = ifelse(barcode %in% bcs_dyingcells, "sensitive", "non-sensitive")) %>% left_join(exp_eff, by = "barcode")
+
+
+ggplot(tib_check, aes(GFP, LBR2, color = MMEJ_MMEJNHEJ)) + geom_point() + facet_grid(~ pool) + scale_color_gradientn(colours = rainbow(5))
+ggplot(tib_check, aes(GFP, LBR2, color = H3K4me1)) + geom_point() + facet_grid(~ pool) + scale_color_gradientn(colours = rainbow(5))
+
+ggplot(tib_check, aes(MMEJ_MMEJNHEJ, ratio)) + geom_point() + facet_grid(~ pool)
+ggplot(tib_check, aes(efficiency, ratio)) + geom_point() + facet_grid(~ pool)
+ggplot(tib_check, aes(GFP, LBR2, color = group)) + geom_point() + facet_grid(~ pool)
+ggplot(tib_check, aes(ratio, fill = pool)) + geom_density()+ facet_grid(~ pool)
+```
+
+
+
+```{r}
+exp_eff <- trip_tib_2000 %>% filter(exp_pool == "indel_LBR2M3814Rep1_RSTP2_2000_LBR1_DMSO_64") %>% distinct(barcode, efficiency)
+
+
+bcs_dyingcells <- tib_check %>% filter(pool == "A", ratio < 0.85) %>% pull(barcode)
+
+
+tib_check <-trip_tib_2000 %>% filter(replicate %in% c("LBR2M3814Rep1")) %>% 
+  distinct(barcode, exp_pool, .keep_all = T) %>% 
+  dplyr::select(barcode, plasmid, sum_bc_reads, LAD_domain, LMNB1, H3K4me1, pool) %>% 
+  spread(plasmid, sum_bc_reads) %>% 
+  mutate(ratio = LBR1/GFP, 
+         group = ifelse(barcode %in% bcs_dyingcells, "sensitive", "non-sensitive")) %>% 
+  left_join(exp_eff, by = "barcode")
+
+
+ggplot(tib_check, aes(GFP, LBR2, color = ratio)) + geom_point() + facet_grid(~ pool) + scale_color_gradientn(colours = rainbow(5))
+ggplot(tib_check, aes(GFP, LBR2, color = group)) + geom_point() + facet_grid(~ pool)
+ggplot(tib_check, aes(ratio, fill = pool)) + geom_density()+ facet_grid(~ pool)
+```
+

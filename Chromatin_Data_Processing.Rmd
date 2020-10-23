@@ -54,7 +54,7 @@ library(stringr)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20200305
+in.dir.date = 20200921
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 dir.create(out.dir, showWarnings = FALSE)
@@ -77,13 +77,13 @@ The following data exps are either from 1_ParsingQC (mapping: `rs[latestdate]_An
 
 ```{r loading}
 
-load(paste0(in.dir, "total_indel_data.RData"))
+tib_RSTP2_2000_mutations = readRDS(paste0(in.dir, "total_indel_data.RDS"))
 load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
-load(paste0(in.dir, "mutation_frequencies_trunc.RData"))
+all.mutations.trunc.dt = readRDS(paste0(in.dir, "mutation_frequencies_trunc.RDS"))
 
 # Loading and prepping the ChIP and DamID data.
-ChIP_mean_data = readRDS("/DATA/projects/DSBrepair/data/R/cl20200108_ChIP_mean_selection.RDS")
-ChIP_meta <- readRDS("/DATA/projects/DSBrepair/data/R/cl20200108_ChIP_meta_selection.RDS")
+ChIP_mean_data = readRDS("/DATA/projects/DSBrepair/data/R/cl20200421_ChIP_mean_selection.RDS")
+ChIP_meta = readRDS("/DATA/projects/DSBrepair/data/R/cl20200421_ChIP_meta_selection.RDS")
 # emsembl.seg.GRCh38 <- import("/DATA/projects/DSBrepair/data/features/homo_sapiens.GRCh38.K562.Regulatory_Build.regulatory_activity.20190329.gff")
 # state_cluster <- read.table("/DATA/projects/DSBrepair/data/R/cl20190719_pool_64_10_state.txt", col.names = c("barcode", "cluster"), stringsAsFactors = FALSE)
 
@@ -112,8 +112,7 @@ damain.list = lapply(damain.files, import)
 That's done, further with the preprossesing of the chromatin data.
 
 ```{r}
-ChIP_mean_data[pool == "clone5", ID := paste0(ID, ".B")]
-ChIP_mean_data[pool == "clone9", ID := paste0(ID, ".B")]
+ChIP_mean_data[pool == "clone_set", ID := paste0(ID, ".B")]
 chip_cast.dt = ChIP_mean_data
 setnames(chip_cast.dt, "ID", "barcode")
 analysis.mapped.integrations.df$end = analysis.mapped.integrations.df$start
@@ -156,7 +155,7 @@ setkey(domains.dt, "barcode")
 <!-- start Christ -->
 
 ```{r domains}
-near_dir = '/DATA/projects/DSBrepair/data/tracks_20190711/nearest/'
+near_dir = '/DATA/projects/DSBrepair/data/tracks_20200327/nearest'
 
 file_list = list.files(near_dir, pattern='20180918.RSTP2', full.names=T)
 
@@ -184,9 +183,9 @@ spin.dt = file.spin.dt[!is.na(file),
 
 # Ruben addition
 ## temp add clone barcodes
-clone_file_list = list.files(near_dir, pattern='clone[59]', full.names=T)
+clone_file_list = list.files(near_dir, pattern='clone_set', full.names=T)
 
-clone_file.dt = data.table(str_match(clone_file_list, '.*/clone(.*).txt'))
+clone_file.dt = data.table(str_match(clone_file_list, '.*/clone_set_(.*).txt'))
 names(clone_file.dt) = c('file', 'target')
 
 clone_rep.dt = clone_file.dt[!is.na(file),
@@ -228,7 +227,7 @@ setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "SPIN-100kb_domain", "S
          c("LAD", "DHS_domain", "SPIN-100kb", "SPIN-10state"))
 
 chip_domains.dt[, pool := gsub("20180918.RSTP2", "RSTP2_2000", pool, perl = TRUE)]
-chip_domains.dt[, pool := gsub("clone5", "RSTP2_clone5", pool, perl = TRUE)]
+chip_domains.dt[, pool := gsub("clone_set", "RSTP2_clone5", pool, perl = TRUE)]
 
 trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode", "cell_line" = "pool")) %>% 
   as_tibble()
@@ -237,7 +236,7 @@ trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
 
 ### Remove K9me3 data
 ```{r removing K9me3 dataa}
-trip_tib <- dplyr::select(trip_tib, !c("H3K9me3", "H3K9me3_domain"))
+trip_tib <- dplyr::select(trip_tib, !c("H3K9me3"))
 ```
 
 
@@ -256,11 +255,11 @@ trip_tib_mut_2000 <- trip_tib_mut %>% filter(binsize == 2000) %>% select_if(not_
 ## Export this data table
 # Ratios
 # save(trip_tib_1000, file = paste0(out.dir, "RSTP2_IndelRatios_Chromatin_1kb.RData"))
-save(trip_tib_2000, file = paste0(out.dir, "RSTP2_IndelRatios_Chromatin_2kb.RData"))
+saveRDS(trip_tib_2000, file = paste0(out.dir, "RSTP2_IndelRatios_Chromatin_2kb.RDS"))
 
 # Mutations truncated
 # save(trip_tib_mut_1000, file = paste0(out.dir, "RSTP2_Indel_Chromatin_1kb.RData"))
-save(trip_tib_mut_2000, file = paste0(out.dir, "RSTP2_Indel_Chromatin_2kb.RData"))
+saveRDS(trip_tib_mut_2000, file = paste0(out.dir, "RSTP2_Indel_Chromatin_2kb.RDS"))
 ```
 
 # Session Info
