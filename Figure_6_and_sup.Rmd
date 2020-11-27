@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20200921
+in.dir.date = 20201029
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -306,8 +306,8 @@ plot_comb_grid_beeswarm <- function(dt, opt_df, domains, y_name, min_count=0,
   if (is.null(group_by)){
     beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
       geom_quasirandom(width=0.3) +
-      stat_summary(fun.y=median, fun.ymin = median,
-                   fun.ymax = median,
+      stat_summary(fun=median, fun.min = median,
+                   fun.max = median,
                    geom="crossbar", width = 0.5,
                    color='red') +
       stat_compare_means(aes(label = ..p.signif..),
@@ -327,8 +327,8 @@ plot_comb_grid_beeswarm <- function(dt, opt_df, domains, y_name, min_count=0,
                       aes_string(x='group', y=y_name, color=group_by)) +
       geom_quasirandom(dodge.width=1) +
       scale_color_manual(values=color) +
-      stat_summary(aes_string(group=group_by), fun.y=median,
-                   fun.ymin = median, fun.ymax = median,
+      stat_summary(aes_string(group=group_by), fun=median,
+                   fun.min = median, fun.max = median,
                    geom="crossbar", width = 0.5,
                    color='red',
                    position= position_dodge(width =1)) +
@@ -574,7 +574,7 @@ mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
 ## Main Figures
 
 ### Panel A
-```{r 6A, fig.height=5, fig.width=7}
+```{r Fig6A, fig.height=5, fig.width=7}
 domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
 
 domains = paste0(domain_levels, '_domain')
@@ -583,7 +583,7 @@ indel.dt = trip_tib %>% filter(drug %in% c("DMSO_GSK", "GSK126"), cell_line == "
   dplyr::select(barcode, drug, MMEJ_MMEJNHEJ, domains) %>%
   spread(drug, MMEJ_MMEJNHEJ) %>%
   filter(!is.na(GSK126), !is.na(DMSO_GSK)) %>%
-  mutate(GSK_ratio = GSK126/DMSO_GSK) %>%
+  mutate(GSK_ratio = log2(GSK126/DMSO_GSK)) %>%
   distinct(barcode, .keep_all = TRUE) %>%
   data.table()
 
@@ -602,7 +602,7 @@ opt_df = get_combinations(domain_levels)
 
 # Ratio of SSTR vs MME
 plot_comb_grid_beeswarm(indel.dt, opt_df,
-                        domain_levels, 'GSK_ratio', min_count = 1)
+                        domain_levels, 'GSK_ratio', min_count = 1, y_plabel=c(-1.5, 1.5))
 
 k27me3 = indel.dt %>% filter(late_replicating == 0, 
                              LAD == 0,
@@ -669,77 +669,8 @@ wilcox.test(idomain, hetcomb)
 ```
 
 
-
-
-```{r}
-clone5_domains <- readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS") %>% as_tibble()
-
-trip_tib_clone5_GSK126 <- trip_tib_2000 %>%
-    filter(exp_pool  %in% c("mean_RSTP2_clone5_LBR2_DMSOGSK_64",
-                            "mean_RSTP2_clone5_LBR2_GSK126_64",
-                            "indel_Clone5GSKBIXRep1_clone5_LBR2_GSK126_64",
-                            "indel_Clone5GSKBIXRep2_clone5_LBR2_GSK126_64",
-                            "indel_Clone5GSKBIXRep3_clone5_LBR2_GSK126_64",
-                            "indel_Clone5GSKBIXRep1_clone5_LBR2_DMSO_64",
-                            "indel_Clone5GSKBIXRep2_clone5_LBR2_DMSO_64",
-                            "indel_Clone5GSKBIXRep3_clone5_LBR2_DMSO_64")) %>% 
-  left_join(clone5_domains, by = "barcode") %>% 
-  mutate(drug = ifelse(drug %in% c("DMSO", "DMSO_GSK"), "DMSO", "GSK126"), 
-         repli_plotting = ifelse(replicate == "mean", "mean", "single"),
-         group = ifelse(group == "late_replicating-LAD-H3K9me2", "triple", ifelse(group %in% c("LAD-H3K9me2", "late_replicating-H3K9me2", "late_replicating"), "other", group)))
-
-# Box plot facetted by "dose"
-p <- ggpaired(filter(trip_tib_clone5_GSK126, replicate != "mean"), x = "drug", y = "MMEJ_MMEJNHEJ",
-              color = "drug", palette = "jco", 
-              line.color = "gray", line.size = 0.4,
-              facet.by = "group", short.panel.labs = FALSE)
-# Use only p.format as label. Remove method name.
-p + stat_compare_means(label = "p.format", paired = TRUE)
-
-# Box plot facetted by "dose"
-p <- ggpaired(filter(trip_tib_clone5_GSK126, replicate == "mean"), x = "drug", y = "MMEJ_MMEJNHEJ",
-              color = "drug", palette = "jco", 
-              line.color = "gray", line.size = 0.4,
-              facet.by = "group", short.panel.labs = FALSE)
-# Use only p.format as label. Remove method name.
-p + stat_compare_means(label = "p.format", paired = TRUE)
-
-
-trip_tib_clone5_GSK126 <- trip_tib_2000 %>%
-    filter(exp_pool  %in% c("mean_RSTP2_clone5_LBR2_DMSOGSK_64",
-                            "mean_RSTP2_clone5_LBR2_GSK126_64",
-                            "indel_Clone5GSKBIXRep1_clone5_LBR2_BIX01294_64",
-                            "indel_Clone5GSKBIXRep2_clone5_LBR2_GSK126_64",
-                            "indel_Clone5GSKBIXRep3_clone5_LBR2_GSK126_64",
-                            "indel_Clone5GSKBIXRep1_clone5_LBR2_DMSO_64",
-                            "indel_Clone5GSKBIXRep2_clone5_LBR2_DMSO_64",
-                            "indel_Clone5GSKBIXRep3_clone5_LBR2_DMSO_64")) %>% 
-  left_join(clone5_domains, by = "barcode") %>% 
-  mutate(drug = ifelse(drug %in% c("DMSO", "DMSO_GSK"), "DMSO", "GSK126"), 
-         repli_plotting = ifelse(replicate == "mean", "mean", "single"),
-         group = ifelse(group == "late_replicating-LAD-H3K9me2", "triple", ifelse(group %in% c("LAD-H3K9me2", "late_replicating-H3K9me2", "late_replicating"), "other", group)))
-
-# Box plot facetted by "dose"
-p <- ggpaired(filter(trip_tib_clone5_GSK126, replicate != "mean"), x = "drug", y = "MMEJ_MMEJNHEJ",
-              color = "drug", palette = "jco", 
-              line.color = "gray", line.size = 0.4,
-              facet.by = "group", short.panel.labs = FALSE)
-# Use only p.format as label. Remove method name.
-p + stat_compare_means(label = "p.format", paired = TRUE)
-
-# Box plot facetted by "dose"
-p <- ggpaired(filter(trip_tib_clone5_GSK126, replicate == "mean"), x = "drug", y = "MMEJ_MMEJNHEJ",
-              color = "drug", palette = "jco", 
-              line.color = "gray", line.size = 0.4,
-              facet.by = "group", short.panel.labs = FALSE)
-# Use only p.format as label. Remove method name.
-p + stat_compare_means(label = "p.format", paired = TRUE)
-
-```
-
-
 ### Panel B
-```{r 6B, fig.height= 4, fig.width= 8}
+```{r Fig6B, fig.height= 4, fig.width= 8}
 trip_tib_KO = trip_tib_2000 %>%
   filter(exp_pool %in% c("mean_RSTP2_clone5_LBR2_LBR_KO_1_64", "mean_RSTP2_clone5_LBR2_LBR_KO_2_64", 
                          "mean_RSTP2_clone5_LBR2_LBR_KO_3_64", "mean_RSTP2_clone5_LBR2_LBR_KO_4_64", 
@@ -841,7 +772,7 @@ group_colors = c("euchromatin" = "#f7941d",
 
 
 
-```{r 6D, fig.height= 4, fig.width= 6}
+```{r Fig6D, fig.height= 4, fig.width= 6}
 clone5_domains_damid = clone5_domains %>% left_join(analysis.mapped.integrations.df, by = "barcode")
 
 ipr = clone5_domains_damid %>% filter(IPR == "IPR17")
@@ -855,7 +786,7 @@ PlotDataTracks(bins,
 
 ```
 
-```{r 6E, fig.height= 4, fig.width= 6}
+```{r Fig6E, fig.height= 4, fig.width= 6}
 clone5_domains_damid = clone5_domains %>% left_join(analysis.mapped.integrations.df, by = "barcode")
 
 ipr = clone5_domains_damid %>% filter(IPR == "IPR2")
@@ -869,7 +800,7 @@ PlotDataTracks(bins,
 
 ```
 
-```{r 6FG, fig.height= 6, fig.width= 6}
+```{r Fig6FG, fig.height= 6, fig.width= 6}
 trip_tib_KO_domains2 <- trip_tib_KO_domains %>% 
   dplyr::select(barcode, ID, drug, KO, KO_clone, IPR, MMEJ_MMEJNHEJ, efficiency) %>%  # select columns of interest
   mutate(KO_clone = ifelse(KO == "Clone5", "wt", KO_clone)) %>% # rename so we can merge later
@@ -903,7 +834,7 @@ ggplot(ipr_dam, aes(x=MMEJ_MMEJNHEJ, y=z_score, color = KO, shape = KO)) +
 
 ## Supplementary
 ### Panel S6A
-```{r S6A, fig.height=5, fig.width=7}
+```{r FigS6A, fig.height=5, fig.width=7}
 indel.dt = trip_tib %>% filter(drug %in% c("-", "BIX01294")) %>%
   dplyr::select(barcode, drug, MMEJ_MMEJNHEJ, domains) %>%
   spread(drug, MMEJ_MMEJNHEJ) %>%
@@ -956,10 +887,24 @@ wilcox.test(idomain, triple)
 wilcox.test(idomain, k9me2)
 ```
 
+### Panel S6B-E
+BIX & GSK western blot representative figure & quantification
 
+### Panel S6F
+LMNA KO TIDE plot
 
-### SXA
-```{r SXA, fig.height 6, fig.width=7}
+### Panel S6G
+LBR KO TIDE plot
+
+### Panel S6H
+LMNA KO Western blots
+
+### Panel S6I
+LBR KO Western blots
+
+### Panel S7A
+LBR
+```{r FigS7A, fig.height 6, fig.width=7}
 ipr = clone5_domains_damid %>% filter(IPR == "IPR17")
 
 ko_colors = c("LMNA_KO1" = "#f9b016",
@@ -982,8 +927,8 @@ PlotDataTracks(bins,
                ipr_loc = ipr$start, cols = ko_colors)
 ```
 
-### SXB
-```{r SXB, fig.height= 6, fig.width= 7}
+### Panel S7B
+```{r FigS7B, fig.height= 6, fig.width= 7}
 ipr = clone5_domains_damid %>% filter(IPR == "IPR2")
 
 PlotDataTracks(bins, 
@@ -996,8 +941,8 @@ PlotDataTracks(bins,
                ipr_loc = ipr$start, cols = ko_colors)
 ```
 
-### SXC
-```{r SXC, fig.height= 8, fig.width= 8}
+### Panel S7C
+```{r FigS7C, fig.height= 8, fig.width= 8}
 ggplot(mean_dam, aes(x=MMEJ_MMEJNHEJ, y=z_score, color=KO, shape = KO)) +
   geom_point() +
   ggtitle('MMEJ:NHEJ vs DamID 20kb') +

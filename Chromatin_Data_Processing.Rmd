@@ -54,7 +54,7 @@ library(stringr)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20200921
+in.dir.date = 20201029
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 dir.create(out.dir, showWarnings = FALSE)
@@ -97,17 +97,16 @@ DNAse_Broad =import.bed('/DATA/projects/DSBrepair/data/tracks_hg38/DNase-seq_K56
 LAD.HMM.gr <- import.bed("/home/t.v.schaik/mydata/proj/3D_nucleus/results/ts180110_4DN_DataProcessing/results/HMM/bin-5kb/K562_LMNB1-5kb-combined_HMM.txt.gz")
 
 # ChIP domains
-damain.files <- list.files("/home/c.leemans/mydata/projects/chip_snake/hg38/hmm/K562/",
-           recursive = TRUE,
-           pattern="_.*[.]gff3",
-           full.names=TRUE)
+near_dir = '/DATA/projects/DSBrepair/data/tracks_20200327/nearest'
 
+file_list = list.files(near_dir, pattern='20180918.RSTP2', full.names=T)
 
-names(damain.files) = gsub('.*//(.*)/5kb/(.*).gff3', '\\1_\\2', damain.files)
-damain.files <- damain.files[grep("r[12]", names(damain.files), invert = TRUE)]
-damain.files <- damain.files[names(damain.files) %in% ChIP_meta$chip_name]
+file.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(.*).txt'))
+names(file.dt) = c('file', 'target')
 
-damain.list = lapply(damain.files, import)
+hist.domains.dt = file.dt[!is.na(file),
+                 fread(file, col.names=c('barcode', 'domain', 'distance')),
+				 by=c('target')]
 ```
 That's done, further with the preprossesing of the chromatin data.
 
@@ -148,30 +147,16 @@ domains.dt <- data.table(rstp2.df[, c("barcode",
 
 # setnames(domains.dt, "barcode", "ID")
 setkey(domains.dt, "barcode")
-
-
 ```
 
 <!-- start Christ -->
 
 ```{r domains}
-near_dir = '/DATA/projects/DSBrepair/data/tracks_20200327/nearest'
-
-file_list = list.files(near_dir, pattern='20180918.RSTP2', full.names=T)
-
-file.dt = data.table(str_match(file_list, '.*/20180918.RSTP2_(.*).txt'))
-
-names(file.dt) = c('file', 'target')
-
-rep.dt = file.dt[!is.na(file),
-                 fread(file, col.names=c('barcode', 'domain', 'distance')),
-				 by=c('target')]
-#
 # rep.dt[target=='repliseq', domain:=ifelse(domain=='iDomain', 'Domain', 'iDomain')]
 #
-rep.dt[target=='repliseq',target:='late_replicating']
+hist.domains.dt[target=='repliseq',target:='late_replicating']
 
-chip.domains.dt = rep.dt[!target %in% c('SPIN-10state', 'SPIN-100kb'), ]
+chip.domains.dt = hist.domains.dt[!target %in% c('SPIN-10state', 'SPIN-100kb'), ]
 
 chip.domains.dt[distance > 0, domain:='iDomain']
 
@@ -242,7 +227,6 @@ trip_tib <- dplyr::select(trip_tib, !c("H3K9me3"))
 
 # Conclusions
 ```{r}
-
 # trip_tib_1000 <- trip_tib %>% filter(binsize == 1000) %>% select_if(not_all_na)
 trip_tib_2000 <- trip_tib %>% filter(binsize == 2000) %>% select_if(not_all_na)
 

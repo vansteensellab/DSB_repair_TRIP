@@ -240,11 +240,7 @@ test_wilcox <- function(dt, group_by='condition', y_name='MMEJ_MMEJNHEJ'){
     return(list(p_value = w$p.value))
 }
 
-quantiles_95 <- function(x) {
-  r <- quantile(x, probs=c(0.05, 0.25, 0.5, 0.75, 0.95))
-  names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
-  r
-}
+
 
 plot_comb_grid <- function(bix.dt, opt_df, domains, y_name, min_count=0,
                            max_count=Inf, group_by=NULL, color=NULL,
@@ -406,147 +402,6 @@ plot_comb_grid <- function(bix.dt, opt_df, domains, y_name, min_count=0,
                      axis='tlbr'))
 }
 
-
-plot_comb_grid_boxplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
-                                   max_count=Inf, group_by=NULL, color=NULL){
-  
-  opt_melt = reshape2::melt(opt_df)
-  colnames(opt_melt) = c('group', 'domain', 'is_in')
-  
-  opt_melt$is_in = ifelse(opt_melt$is_in, 'in', 'out')
-  opt_melt$domain = factor(opt_melt$domain, levels=domains)
-  
-  
-  group_list = lapply(rownames(opt_df), function(opt_name){
-    opt = opt_df[opt_name, ]
-    in_vec = domains[opt]
-    out_vec = domains[!opt]
-    
-    in_sum = rowSums(bix.dt[,..in_vec])
-    out_sum = rowSums(bix.dt[,..out_vec])
-    if (length(in_vec)==0){
-      in_group = which(out_sum == 0)
-    } else if (length(out_vec) == 0){
-      in_group = which(in_sum==length(in_vec))
-    } else  {
-      in_group = which(in_sum == length(in_vec) & out_sum==0)
-    }
-    return(in_group)
-  })
-  
-  names(group_list) = rownames(opt_df)
-  for (opt_name in names(group_list)){
-    i_vec = group_list[[opt_name]]
-    bix.dt[i_vec, group := opt_name]
-  }
-  if (is.null(group_by)){
-    group_count_df = data.frame(bix.dt[,table(group)])
-  } else {
-    group_count_df = data.frame(bix.dt[,table(group)/length(unique(get(group_by)))])
-  }
-  group_count_df = group_count_df[order(match(group_count_df$group, rownames(opt_df))),]
-  # print(group_count_df)
-  group_count_sel = group_count_df[group_count_df$Freq>=min_count,]
-  group_count_sel = group_count_sel[group_count_sel$Freq<=max_count,]
-  group_levels =  group_count_sel$group
-  opt_sel = opt_melt[opt_melt$group %in% group_levels, ]
-  
-  opt_sel$group = factor(opt_sel$group, levels=group_levels)
-  # print(opt_sel)
-  
-  indel_selection = bix.dt[group%in%group_levels, ]
-  indel_selection[,group:=factor(group, levels=group_levels)]
-  
-  group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
-  
-  count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
-    geom_label() +
-    theme_void()
-  
-  
-  
-  dots = ggplot(opt_sel, aes(x=group, y=domain, color=is_in)) +
-    geom_point(size=2) +
-    geom_line(data=opt_sel[opt_sel$is_in=='in',], aes(group=group)) +
-    theme_bw() +
-    scale_color_manual(values=c('in'='black', 'out'='grey70')) +
-    guides(color=FALSE)  +
-    geom_vline(xintercept=seq(1.5, length(unique(bix.dt$group))-0.5, 1),
-               lwd=0.5, colour="grey90") +
-    theme(axis.title=element_blank(),
-          axis.text=element_blank(),
-          axis.ticks=element_blank(),
-          panel.grid.major = element_blank())
-  
-  symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
-                symbols = c("****", "***", "**", "*", " "))
-
-  if (is.null(group_by)){
-    boxpl = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
-      geom_quasirandom(width=.3) +
-      stat_summary(fun=median, fun.min = median,
-                   fun.max = median,
-                   geom="crossbar", width = 0.5,
-                   color='red') +
-      stat_compare_means(aes(label = ..p.signif..),
-                         symnum.args = symnum,
-                         method = 'wilcox.test',
-                         ref.group='iDomain')
-  } else {
-    
-    boxpl = ggplot(indel_selection,
-                   aes_string(x='group', y=y_name, color=group_by, fill = group_by)) +
-      geom_quasirandom(width=0.2, dodge.width = .9) + 
-      stat_summary(fun=median, fun.min = median,
-                   fun.max = median,
-                   geom="crossbar", width = 0.5,
-                   color='red', position=position_dodge(width=.9)) +
-      guides(fill=F) +
-      scale_fill_manual(values=color) +
-      scale_color_manual(values=color)
-      # stat_summary(fun.data = quantiles_95, 
-      #              geom="boxplot", 
-      #              position=position_dodge(width=1))
-  }
-  boxpl = boxpl +
-    theme_bw() +
-    geom_vline(xintercept=seq(1.5, length(unique(bix.dt$group))-0.5, 1),
-               lwd=0.5, colour="grey90") +
-    theme(axis.title=element_blank(),
-          axis.text.x=element_blank(),
-          panel.grid.major.x = element_blank(),
-          axis.ticks.x=element_blank())
-  
-  
-  count = data.frame(domain=gsub('_domain', '', domains),
-                     count=colSums(bix.dt[,..domains], na.rm=T))
-  
-  count$domain = factor(count$domain, levels=domain_levels)
-  
-  
-  histogram = ggplot(count, aes(x=1, y=domain, label = count)) +
-    geom_label() +
-    theme_bw() +
-    theme(plot.background = element_blank(),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.border = element_blank(),
-          axis.title=element_blank(),
-          axis.text.x=element_blank(),
-          axis.ticks=element_blank())
-  
-  empty = ggplot(data=data.frame(1,1),aes(x=1,y=1)) +
-    geom_point() +
-    theme_void()
-  
-  count_beeswarm = plot_grid(boxpl, count_plot, ncol=1, rel_heights=c(20,1),
-                             align='v', axis='lr')
-  return(plot_grid(empty, boxpl, empty, count_plot,
-                   histogram, dots, nrow=3,
-                   rel_widths=c(1,10), rel_heights=c(15,1,5), align='vh',
-                   axis='tlbr'))
-}
-
 ```
 
 # Data import
@@ -615,46 +470,48 @@ p + scale_fill_manual("legend", values = colores) +
 
 ## Panel 7B
 
-```{r Fig7B pathway contribution per barcode with NU7441, fig.height=8, fig.width=14}
-pathway_distribution <- trip_tib %>%
-  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>%
-  gather(NHEJ, MMEJ, SSTR, other_indels,
-         key = "pathway", value = 'ratios') %>%
-    distinct(barcode, pathway, ratios) %>%
-  group_by(barcode) %>%
-  dplyr::mutate(ratios = ratios/sum(ratios))
+```{r Fig7B pathways vs chrom ssODN NU7441, fig.height=8, fig.width=9}
+chrom.mods.cols <- seq(grep("binsize", names(trip_tib))+1, grep("H3K27me3_domain", names(trip_tib))-1)
 
-barcode_order <- trip_tib %>%
-  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>%
-  distinct(efficiency, barcode)  %>%
-  arrange(dplyr::desc(efficiency)) %>%
-  dplyr::select(barcode)
+SSTR.hist.corr <- CorrelationDFMean(trip_tib, "mean_RSTP2_2000_LBR2_NU7441_ssODN_64", "NHEJ", targets = chrom.mods.cols) %>%
+  arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
 
-pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
-pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("other_indels", "MMEJ", "SSTR", "NHEJ"))
+colores <- c("other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
 
-trip_tib %>%
-  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>%
-  distinct(efficiency, barcode)  %>%
-  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
-       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
-  geom_bar(stat = "identity") +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("TIF") +
-  xlab("IPR")
+lims = 1
+# Over all indels (excl. 0)
+CorrelationPlotMean(trip_tib, "mean_RSTP2_2000_LBR2_NU7441_ssODN_64", c("NHEJ", "MMEJ", "SSTR", "other_indels") , targets = SSTR.hist.corr)
 
-ggplot(pathway_distribution,
-       aes(barcode, ratios, width=.8)) +
-  geom_bar(stat = "identity", aes(fill = pathway)) +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("Pathway Contribution") +
-  xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
+# # Over all reads (incl. 0)
+# colores <- c("other_indels" = "black", "NHEJ_freq" = "#E1251B", "MMEJ_freq" = "#223DA0", "SSTR_freq" = "#007A4C")
+# CorrelationPlotMean(trip_tib, "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", c("NHEJ_freq", "MMEJ_freq", "SSTR_freq", "other_indels") , targets = SSTR.hist.corr)
+
+
+# # Same with NU7441 to check
+# SSTR.hist.corr <- CorrelationDFMean(trip_tib, "mean_RSTP2_2000_LBR2_NU7441_ssODN_64", "NHEJ", targets = chrom.mods.cols) %>%
+#   arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
+# # Over all indels (excl. 0)
+# colores <- c("other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
+# CorrelationPlotMean(trip_tib, "mean_RSTP2_2000_LBR2_NU7441_ssODN_64", c("NHEJ", "MMEJ", "SSTR", "other_indels") , targets = SSTR.hist.corr)
+# # Over all reads (incl. 0)
+# colores <- c("other_indels" = "black", "NHEJ_freq" = "#E1251B", "MMEJ_freq" = "#223DA0", "SSTR_freq" = "#007A4C")
+# CorrelationPlotMean(trip_tib, "mean_RSTP2_2000_LBR2_NU7441_ssODN_64", c("NHEJ_freq", "MMEJ_freq", "SSTR_freq", "other_indels") , targets = SSTR.hist.corr)
+# 
+# # Make balance check.
+# trip_tib_bal = trip_tib %>% mutate(SSTR_MMEJNHEJSSTR = SSTR/(MMEJ+NHEJ+SSTR),
+#                                    MMEJ_MMEJNHEJSSTR = MMEJ/(MMEJ+NHEJ+SSTR),
+#                                    NHEJ_MMEJNHEJSSTR = NHEJ/(MMEJ+NHEJ+SSTR)) 
+# 
+# chrom.mods.cols <- seq(grep("binsize", names(trip_tib_bal))+1, grep("H3K27me3_domain", names(trip_tib_bal))-1)
+# 
+# SSTR.hist.corr <- CorrelationDFMean(trip_tib_bal, "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "SSTR_MMEJNHEJSSTR", targets = chrom.mods.cols) %>%
+#   arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
+# 
+# colores <- c("NHEJ_MMEJNHEJSSTR" = "#E1251B", "MMEJ_MMEJNHEJSSTR" = "#223DA0", "SSTR_MMEJNHEJSSTR" = "#007A4C", "SSTR_MMEJSSTR" = "gray20")
+# 
+# 
+# lims = 1
+# CorrelationPlotMean(trip_tib_bal, "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", c("SSTR_MMEJNHEJSSTR", "MMEJ_MMEJNHEJSSTR", "NHEJ_MMEJNHEJSSTR") , targets = SSTR.hist.corr)
 ```
 
 ### Figure legend
@@ -663,80 +520,18 @@ ggplot(pathway_distribution,
 
 ## Panel 7C
 
-```{r Fig7C SSTR ratio per heterochomatin domain, fig.height=6, fig.width=10}
+```{r Fig7C SSTR NU7441 ratio per heterochomatin domain, fig.height=6, fig.width=10}
 tib.dt = data.table(trip_tib)
 
 domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
 
 domains = paste0(domain_levels, '_domain')
 
-# indel.dt = unique(tib.dt[exp_pool == "mean_RSTP2_2000_LBR2_NU7441_ssODN_64",  
-#                          c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR', 'NHEJ', 'MMEJ', 'efficiency', 'SSTR_freq', 'MMEJ_freq','NHEJ_freq',
-#                            domains), with=F])
-# 
-# indel.dt = indel.dt %>% mutate(NHEJ_eff = NHEJ/efficiency, MMEJ_eff = MMEJ/efficiency, SSTR_eff = SSTR/efficiency)
-# 
-# indel.dt[indel.dt=='iDomain'] <- 0
-# indel.dt[indel.dt=='Domain'] <- 1
-# 
-# indel.dt[is.na(LAD_domain), LAD_domain:=0]
-# 
-# indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
-# 
-# colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
-# 
-# opt_df = get_combinations(domain_levels)
+indel.dt = unique(tib.dt[exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64",  
+                         c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR', 'NHEJ', 'MMEJ', 'efficiency', 'SSTR_freq', 'MMEJ_freq','NHEJ_freq',
+                           domains), with=F])
 
-
-# Ratio of SSTR vs all indels
-
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'efficiency', min_count = 25, y_plabel=c(0, 1.1))
-
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'SSTR', min_count = 25, y_plabel=c(0.5, 0.7))
-
-# plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR', group_by='condition', min_count = 25, color=c("DMSO" = "black", "NU7441" = "gray"))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'SSTR_freq', min_count = 25, y_plabel=c(0.5, 0.7))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'SSTR_eff', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'MMEJ', min_count = 25, y_plabel=c(0, 0.6))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'MMEJ_freq', min_count = 25, y_plabel=c(0, 0.6))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'MMEJ_eff', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'NHEJ', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'NHEJ_freq', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-                   # domain_levels, 'NHEJ_eff', min_count = 25, y_plabel=c(0, 1))
-
-
-barcodes_all_drugs <- trip_tib_2000 %>%
-  filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")) %>% 
-  group_by(barcode) %>%
-  dplyr::summarise(n = n()) %>%
-  filter(n == 2) %>%
-  pull(barcode)
-
-indel.dt = trip_tib %>% filter(ssODN == "ssODN") %>%
-  dplyr::select(barcode, drug, SSTR, domains) %>%
-  filter(barcode %in% barcodes_all_drugs) %>%
-  spread(drug, SSTR) %>%
-  distinct(barcode, .keep_all = TRUE) %>%
-  data.table()
-
+indel.dt = indel.dt %>% mutate(NHEJ_eff = NHEJ/efficiency, MMEJ_eff = MMEJ/efficiency, SSTR_eff = SSTR/efficiency)
 
 indel.dt[indel.dt=='iDomain'] <- 0
 indel.dt[indel.dt=='Domain'] <- 1
@@ -749,27 +544,38 @@ colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
 opt_df = get_combinations(domain_levels)
 
-eff.dt = melt(indel.dt, measure.vars=c('DMSO', 'NU7441'),
-              variable.name='condition', value.name='SSTR')
 
-plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR', group_by='condition', min_count = 25, color=c("DMSO" = "#007B4D", "NU7441" = "#83A88B"))
+# Ratio of SSTR vs all indels
 
-groups <- unique(eff.dt$group)[c(2:13)]
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'efficiency', min_count = 25, y_plabel=c(0, 1.1))
 
-for(i in groups) {
-  pvals <- eff.dt %>% 
-    dplyr::select(condition, SSTR, group) %>% 
-    group_by(condition) %>%
-    filter(group %in% c("iDomain", i)) %>%
-    do(broom::tidy(wilcox.test(SSTR ~ group, data = .))) %>%
-    ungroup() %>%
-    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
-    dplyr::select(condition, statistic, p.value, p.adj) %>%
-    arrange(p.adj)
-  print(i)
-  print(pvals)
-} 
-
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'SSTR', min_count = 25, y_plabel=c(0.15, 0.26))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'SSTR_freq', min_count = 25, y_plabel=c(0, 0.5))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'SSTR_eff', min_count = 25, y_plabel=c(0, 1))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ', min_count = 25, y_plabel=c(0, 0.6))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ_freq', min_count = 25, y_plabel=c(0, 0.6))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ_eff', min_count = 25, y_plabel=c(0, 1))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'NHEJ', min_count = 25, y_plabel=c(0, 1))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'NHEJ_freq', min_count = 25, y_plabel=c(0, 1))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   # domain_levels, 'NHEJ_eff', min_count = 25, y_plabel=c(0, 1))
 
 ```
 
@@ -782,74 +588,14 @@ for(i in groups) {
 ## Panel 7D
 
 ```{r Fig7D SSTR_MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
-indel.dt = trip_tib %>% filter(ssODN == "ssODN") %>%
-  dplyr::select(barcode, drug, SSTR_MMEJSSTR, domains) %>%
-  filter(barcode %in% barcodes_all_drugs) %>%
-  mutate(SSTR_MMEJSSTR = 1-SSTR_MMEJSSTR) %>%
-  spread(drug, SSTR_MMEJSSTR) %>%
-  distinct(barcode, .keep_all = TRUE) %>%
-  data.table()
+indel.dt[, MMEJ_SSTR := 1-SSTR_MMEJSSTR, ]
 
-indel.dt[indel.dt=='iDomain'] <- 0
-indel.dt[indel.dt=='Domain'] <- 1
-
-indel.dt[is.na(LAD_domain), LAD_domain:=0]
-
-indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
-
-colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
-
-eff.dt = melt(indel.dt, measure.vars=c('DMSO', 'NU7441'),
-              variable.name='condition', value.name='SSTR_MMEJSSTR')
-
-plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR_MMEJSSTR', group_by='condition', min_count = 25, color=c("DMSO" = "black", "NU7441" = "gray"))
-
-for(i in groups) {
-  pvals <- eff.dt %>% 
-    dplyr::select(condition, SSTR_MMEJSSTR, group) %>% 
-    group_by(condition) %>%
-    filter(group %in% c("iDomain", i)) %>%
-    do(broom::tidy(wilcox.test(SSTR_MMEJSSTR ~ group, data = .))) %>%
-    ungroup() %>%
-    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
-    dplyr::select(condition, statistic, p.value, p.adj) %>%
-    arrange(p.adj)
-  print(i)
-  print(pvals)
-}
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'MMEJ_SSTR', min_count = 25, y_plabel=c(0.85, 1))
 ```
 
 ### Figure legend
 (D) Same as in C, but showing the MMEJ:SSTR balance. See also Figure S8J.
-
-```{r Fig7F end point pathway proportion, fig.height=6, fig.width=10}
-endpoint = readRDS("/DATA/projects/DSBrepair/data/R/cl20201124_end_ratio.RDS")
-endpointSSTR = readRDS("/DATA/projects/DSBrepair/data/R/cl20201124_SSTR_end_ratio.RDS")
-
-colores <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
-
-ggplot(endpointSSTR,
-       aes(barcode, proportion, width=1)) +
-  geom_bar(stat = "identity", aes(fill = indel_type)) +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("Pathway Contribution") +
-  xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
-
-ggplot(endpoint,
-       aes(barcode, proportion, width=1)) +
-  geom_bar(stat = "identity", aes(fill = indel_type)) +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("Pathway Contribution") +
-  xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
-```
 
 
 # Supplementary Figure 7
@@ -861,7 +607,7 @@ Schematic of the ssODN
 
 ## Panel S7B
 ```{r FigS7B indel distribution ssODN, fig.height=4, fig.width=7}
-SSTR_indels = filter(trip_tib_mut_2000, exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
+SSTR_indels = filter(trip_tib_mut, exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
 
 ggplot(SSTR_indels,
        aes(mutation, freq, color = color)) +
@@ -891,22 +637,32 @@ trip_tib_mut %>%
 
 ## Panel S7C
 ```{r FigS7C scatter NHEJ with and without ssODN, fig.height=5, fig.width=5}
-formula <- y ~ x
+trip_lbr2_ssODN_NHEJ <- trip_tib %>% filter(drug == "DMSO") %>% dplyr::select(barcode, ssODN, NHEJ, late_replicating) %>% spread(ssODN, NHEJ)
 
-trip_lbr2_ssODN_NHEJ <- trip_tib %>% dplyr::select(barcode, ssODN, NHEJ, late_replicating, drug) %>% spread(ssODN, NHEJ)
-
-ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN, color = drug)) +
+ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN)) +
   geom_point() +
   theme_bw(base_size = 16) +
   geom_abline(slope = 1)  +
   geom_smooth(method = glm) +
-  xlim(0,.8) + ylim(0,.8)  +
-  labs(title = "NHEJ - vs NHEJ + ssODN in NU7441 condition",
+  xlim(.3, .82) + ylim(.3, .82)  +
+  labs(title = "NHEJ - vs NHEJ + ssODN in DMSO condition",
        x = "NHEJ -",
        y = "NHEJ ssODN") +
-  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top") +
-  theme(legend.position = c(0.8, 0.2)) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
+  stat_cor(method = "pearson")
+
+
+# trip_lbr2_ssODN_NHEJ <- trip_tib %>% filter(drug == "NU7441") %>% dplyr::select(barcode, ssODN, NHEJ, late_replicating) %>% spread(ssODN, NHEJ)
+# 
+# ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN)) +
+#   geom_point() +
+#   theme_bw(base_size = 16) +
+#   geom_abline(slope = 1)  +
+#   geom_smooth(method = glm) +
+#   xlim(0, .65) + ylim(0, .65)  +
+#   labs(title = "NHEJ - vs NHEJ + ssODN in NU7441 condition",
+#        x = "NHEJ -",
+#        y = "NHEJ ssODN") +
+#   stat_cor(method = "pearson")
 ```
 
 ### Figure legend
@@ -914,61 +670,55 @@ ggplot(trip_lbr2_ssODN_NHEJ, aes(`-`, ssODN, color = drug)) +
 
 
 ## Panel S7D
-```{r FigS7D scatters MMEJ ssODN vs MMEJ - DMSO & NU7441, fig.height=5, fig.width=5}
-trip_lbr2_ssODN_MMEJ <- trip_tib %>% dplyr::select(barcode, ssODN, MMEJ, late_replicating, drug) %>% spread(ssODN, MMEJ)
+```{r FigS7D scatters MMEJ ssODN vs MMEJ - DMSO, fig.height=5, fig.width=5}
+formula <- y ~ x
 
-ggplot(trip_lbr2_ssODN_MMEJ, aes(`-`, ssODN, color = drug)) +
+trip_lbr2_ssODN_MMEJ <- trip_tib %>% filter(drug == "DMSO") %>% dplyr::select(barcode, ssODN, MMEJ, late_replicating) %>% spread(ssODN, MMEJ)
+
+ggplot(trip_lbr2_ssODN_MMEJ, aes(`-`, ssODN)) +
   geom_point() +
   theme_bw(base_size = 16) +
   geom_abline(slope = 1)  +
   geom_smooth(method = glm) +
-  xlim(0,.8) + ylim(0,.8)  +
-  labs(title = "MMEJ - vs MMEJ + ssODN in NU7441 condition",
+  xlim(0,.45) + ylim(0,.45)  +
+  labs(title = "MMEJ - vs MMEJ + ssODN in DMSO condition",
        x = "MMEJ -",
        y = "MMEJ ssODN") +
-  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top") +
-  theme(legend.position = c(0.8, 0.2)) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
+  stat_cor(method = "pearson", label.x = 0, label.y = .3)
+
+
+# formula <- y ~ x
+# 
+# trip_lbr2_ssODN_MMEJ <- trip_tib %>% filter(drug == "NU7441") %>% dplyr::select(barcode, ssODN, MMEJ, late_replicating) %>% spread(ssODN, MMEJ)
+# 
+# ggplot(trip_lbr2_ssODN_MMEJ, aes(`-`, ssODN)) +
+#   geom_point() +
+#   theme_bw(base_size = 16) +
+#   geom_abline(slope = 1)  +
+#   geom_smooth(method = glm) +
+#   xlim(0,.8) + ylim(0,.8)  +
+#   labs(title = "MMEJ - vs MMEJ + ssODN in NU7441 condition",
+#        x = "MMEJ -",
+#        y = "MMEJ ssODN") +
+#   stat_cor(method = "pearson", label.x = 0, label.y = .3)
 ```
 
 ###  Figure legend
-
-
-
-```{r FigS7D scatters efficiency ssODN vs efficiency - DMSO & NU7441, fig.height=5, fig.width=5}
-trip_lbr2_ssODN_efficiency <- trip_tib %>% dplyr::select(barcode, ssODN, efficiency, late_replicating, drug) %>% spread(ssODN, efficiency)
-
-ggplot(trip_lbr2_ssODN_efficiency, aes(`-`, ssODN, color = drug)) +
-  geom_point() +
-  theme_bw(base_size = 16) +
-  geom_abline(slope = 1)  +
-  geom_smooth(method = glm) +
-  xlim(0,1) + ylim(0,1)  +
-  labs(title = "efficiency - vs efficiency + ssODN in NU7441 condition",
-       x = "efficiency -",
-       y = "efficiency ssODN") +
-  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top") +
-  theme(legend.position = c(0.8, 0.2)) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
-```
-
 
 ## Panel S7E
 
 ```{r FigS7E MMEJ vs SSTR with DMSO, fig.height=5, fig.width=5}
 trip_tib %>%
-  filter(ssODN == "ssODN") %>%
-  ggplot(., aes(MMEJ, SSTR, color = drug)) +
+  filter(drug == "DMSO", ssODN == "ssODN") %>%
+  ggplot(., aes(MMEJ, SSTR)) +
   geom_point() +
   theme_bw(base_size = 16) +
   geom_smooth(method = glm) +
-  xlim(0,.5) + ylim(0,.5)   +
-  labs(title = "MMEJ vs SSTR in DMSO & NU7441 condition",
+  xlim(0,.3) + ylim(0,.3)  +
+  labs(title = "MMEJ vs SSTR in DMSO condition",
        x = "MMEJ",
-       y = "SSTR")  +
-  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "bottom") +
-  theme(legend.position = c(0.8, 0.2)) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
+       y = "SSTR") +
+  stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top")
 ```
 
 ## Panel S7F
@@ -976,52 +726,77 @@ trip_tib %>%
 
 ```{r FigS7F MMEJ vs SSTR with NU7441, fig.height=5, fig.width=5}
 trip_tib %>%
-  filter(ssODN == "ssODN") %>%
-  ggplot(., aes(efficiency, SSTR, color = drug)) +
+  filter(drug == "NU7441", ssODN == "ssODN") %>%
+  ggplot(., aes(MMEJ, SSTR)) +
   geom_point() +
   theme_bw(base_size = 16) +
   geom_smooth(method = glm) +
-  labs(title = "efficiency vs SSTR in DMSO & NU7441 condition",
+  xlim(0,.5) + ylim(0,.5)   +
+  labs(title = "MMEJ vs SSTR in NU7441 condition",
+       x = "MMEJ",
+       y = "SSTR")  +
+  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "bottom")
+
+trip_tib %>%
+  filter(drug == "NU7441", ssODN == "ssODN") %>%
+  ggplot(., aes(efficiency, SSTR)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  labs(title = "efficiency vs SSTR in NU7441 condition",
        x = "efficiency",
        y = "SSTR")  +
-  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "bottom") + 
-  theme(legend.position = c(0.4, 0.4)) +
-  xlim(0,1) + ylim(0,1) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
-
+  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "bottom")
 
 trip_tib %>%
-  filter(ssODN == "ssODN") %>%
-  ggplot(., aes(efficiency, MMEJ, color = drug)) +
+  filter(drug == "DMSO", ssODN == "ssODN") %>%
+  ggplot(., aes(efficiency, SSTR)) +
   geom_point() +
   theme_bw(base_size = 16) +
   geom_smooth(method = glm) +
-  labs(title = "efficiency vs MMEJ in DMSO & NU7441 condition",
+  labs(title = "efficiency vs SSTR in DMSO condition",
        x = "efficiency",
-       y = "MMEJ")  +
-  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "bottom") + 
-  theme(legend.position = c(0.8, 0.4)) +
-  xlim(0,1) + ylim(0,1) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
+       y = "SSTR")  +
+  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "bottom")
 
-trip_tib %>%
-  filter(ssODN == "ssODN") %>%
-  ggplot(., aes(efficiency, NHEJ, color = drug)) +
-  geom_point() +
-  theme_bw(base_size = 16) +
-  geom_smooth(method = glm) +
-  labs(title = "efficiency vs NHEJ in DMSO & NU7441 condition",
-       x = "efficiency",
-       y = "NHEJ")  +
-  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "bottom") + 
-  theme(legend.position = c(0.8, 0.2)) +
-  xlim(0,1) + ylim(0,1) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
 ```
 
 ###  Figure legend
 (F) Same as (E) but in the presence of NU7441. 
+```{r}
+pathway_distribution <- trip_tib %>%
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_NU7441_ssODN_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
 
+barcode_order <- trip_tib %>%
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_NU7441_ssODN_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,efficiency,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios)) %>%
+  filter(pathway == "efficiency")  %>%
+  arrange(dplyr::desc(ratios)) %>%
+  dplyr::select(barcode)
+
+pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode") 
+```
 
 ```{r FigS7E SSTR in DMSO vs NU7441, fig.height=5, fig.width=5}
 trip_tib %>%
@@ -1036,82 +811,190 @@ trip_tib %>%
        x = "DMSO",
        y = "NU7441") +
   stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top")
+
+
+
+trip_tib %>%
+  gather(key = "pathway", value = "proportion", NHEJ, MMEJ, SSTR, other_indels, efficiency) %>%
+  dplyr::select(barcode, pathway, proportion, drug, ssODN) %>%
+  tidyr::spread(drug, proportion) %>%
+  ggplot(., aes(DMSO, NU7441)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  labs(title = "pathways in DMSO vs NU7441",
+       x = "DMSO",
+       y = "NU7441") +
+  stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top") + 
+  facet_grid(ssODN ~ pathway, scales = "free")
+
+
+
+trip_tib_2000 %>% filter(ssODN == "ssODN", plasmid == "LBR2", cell_line == "RSTP2_2000", time == 64) %>% distinct(barcode, exp_pool, .keep_all = T) %>% dplyr::select(barcode, replicate, drug, SSTR) %>% spread(replicate, SSTR) %>%
+    ggplot(., aes(LBR2ssODNRep3, LBR2ssODNRep1)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  labs(title = "SSTR in rep3 vs rep1",
+       x = "rep3",
+       y = "rep1") +
+  stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top") + 
+  facet_grid(. ~ drug, scales = "free")
+
+trip_tib %>%
+  filter(ssODN == "ssODN") %>%
+  dplyr::select(barcode, efficiency, drug) %>%
+  tidyr::spread(drug, efficiency) %>%
+  ggplot(., aes(DMSO, NU7441)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  labs(title = "efficiency in DMSO vs NU7441",
+       x = "DMSO",
+       y = "NU7441") +
+  stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top")
+
+# exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")
+
+trip_tib %>%
+  filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")) %>%
+  dplyr::select(barcode, efficiency, drug) %>%
+  tidyr::spread(drug, efficiency) %>%
+  ggplot(., aes(DMSO, NU7441)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  labs(title = "efficiency in DMSO vs NU7441 ssODN",
+       x = "DMSO",
+       y = "NU7441 ssODN") +
+  stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top")
+
+trip_tib %>%
+  filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")) %>%
+  dplyr::select(barcode, NHEJ, drug) %>%
+  tidyr::spread(drug, NHEJ) %>%
+  ggplot(., aes(DMSO, NU7441)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  labs(title = "NHEJ in DMSO vs NU7441 ssODN",
+       x = "DMSO",
+       y = "NU7441 ssODN") +
+  stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top")
 ```
 
 
 
 
 ```{r replicate correlation DMSO}
-# res.tib = trip_tib_2000 %>% 
-#   filter(ssODN == "ssODN", plasmid == "LBR2", cell_line == "RSTP2_2000", time == 64) %>%
-#   distinct(barcode, exp_pool, .keep_all = T)
-#   
-# res =  res.tib %>% filter(drug == "DMSO") %>%
-#   dplyr::select(barcode, replicate, SSTR) %>% 
-#   spread(replicate, SSTR) %>% 
-#   column_to_rownames(., var = "barcode") %>%
-#   as.matrix() %>%
-#   rcorr()
-# 
-# library(corrplot)
-# corrplot(res$r, type = "upper", order = "hclust", 
-#          tl.col = "black", tl.srt = 45, diag = FALSE)
+res.tib = trip_tib_2000 %>% 
+  filter(ssODN == "ssODN", plasmid == "LBR2", cell_line == "RSTP2_2000", time == 64) %>%
+  distinct(barcode, exp_pool, .keep_all = T)
+  
+res =  res.tib %>% filter(drug == "DMSO") %>%
+  dplyr::select(barcode, replicate, SSTR) %>% 
+  spread(replicate, SSTR) %>% 
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45, diag = FALSE)
+
+
+res = res.tib  %>%
+  filter(drug == "DMSO") %>%
+  dplyr::select(barcode, replicate, MMEJ) %>%
+  spread(replicate, MMEJ) %>%
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45, diag = FALSE)
+
+
+res = res.tib %>%
+  filter(drug == "DMSO") %>%
+  dplyr::select(barcode, replicate, NHEJ) %>%
+  spread(replicate, NHEJ) %>%
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45, diag = FALSE)
+
+res = res.tib %>%
+  filter(drug == "DMSO") %>%
+  dplyr::select(barcode, replicate, efficiency) %>%
+  spread(replicate, efficiency) %>%
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45, diag = FALSE)
 ```
 
 ```{r replicate correlation NU7441}
-# res = res.tib %>%
-#   filter(drug == "NU7441") %>%
-#   dplyr::select(barcode, replicate, SSTR) %>% 
-#   spread(replicate, SSTR) %>% 
-#   column_to_rownames(., var = "barcode") %>%
-#   as.matrix() %>%
-#   rcorr()
-# 
-# library(corrplot)
-# corrplot(res$r, type = "upper", order = "hclust", 
-#          tl.col = "black", tl.srt = 45, diag = FALSE)
-# 
-# 
-# res = res.tib %>%
-#   filter(drug == "NU7441") %>%
-#   dplyr::select(barcode, replicate, MMEJ) %>% 
-#   spread(replicate, MMEJ) %>% 
-#   column_to_rownames(., var = "barcode") %>%
-#   as.matrix() %>%
-#   rcorr()
-# 
-# library(corrplot)
-# corrplot(res$r, type = "upper", order = "hclust", 
-#          tl.col = "black", tl.srt = 45, diag = FALSE)
-# 
-# 
-# res = res.tib %>%
-#   filter(drug == "NU7441") %>%
-#   dplyr::select(barcode, replicate, NHEJ) %>% 
-#   spread(replicate, NHEJ) %>% 
-#   column_to_rownames(., var = "barcode") %>%
-#   as.matrix() %>%
-#   rcorr()
-# 
-# library(corrplot)
-# corrplot(res$r, type = "upper", order = "hclust", 
-#          tl.col = "black", tl.srt = 45, diag = FALSE)
-# 
-# res = res.tib %>%
-#   filter(drug == "NU7441") %>%
-#   dplyr::select(barcode, replicate, efficiency) %>% 
-#   spread(replicate, efficiency) %>% 
-#   column_to_rownames(., var = "barcode") %>%
-#   as.matrix() %>%
-#   rcorr()
-# 
-# library(corrplot)
-# corrplot(res$r, type = "upper", order = "hclust", 
-#          tl.col = "black", tl.srt = 45, diag = FALSE)
+res = res.tib %>%
+  filter(drug == "NU7441") %>%
+  dplyr::select(barcode, replicate, SSTR) %>% 
+  spread(replicate, SSTR) %>% 
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45, diag = FALSE)
+
+
+res = res.tib %>%
+  filter(drug == "NU7441") %>%
+  dplyr::select(barcode, replicate, MMEJ) %>%
+  spread(replicate, MMEJ) %>%
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45, diag = FALSE)
+
+
+res = res.tib %>%
+  filter(drug == "NU7441") %>%
+  dplyr::select(barcode, replicate, NHEJ) %>%
+  spread(replicate, NHEJ) %>%
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45, diag = FALSE)
+
+res = res.tib %>%
+  filter(drug == "NU7441") %>%
+  dplyr::select(barcode, replicate, efficiency) %>%
+  spread(replicate, efficiency) %>%
+  column_to_rownames(., var = "barcode") %>%
+  as.matrix() %>%
+  rcorr()
+
+library(corrplot)
+corrplot(res$r, type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45, diag = FALSE)
 ```
 
 
-```{r FigS7B pathway contribution per barcode with DMSO, fig.height=8, fig.width=14}
+```{r}
 pathway_distribution <- trip_tib %>%
   filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>%
   gather(NHEJ, MMEJ, SSTR, other_indels,
@@ -1127,7 +1010,7 @@ barcode_order <- trip_tib %>%
     distinct(barcode, pathway, ratios) %>%
   group_by(barcode) %>%
   dplyr::mutate(ratios = ratios/sum(ratios)) %>%
-  filter(pathway == "efficiency")  %>%
+  filter(pathway == "SSTR")  %>%
   arrange(dplyr::desc(ratios)) %>%
   dplyr::select(barcode)
 
@@ -1170,18 +1053,79 @@ trip_tib %>%
 
 ## Panel S7H
 ```{r FigS7H SSTR heterochrom domains, fig.height=6, fig.width=12}
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'SSTR', y_plabel=c(0.2, 0.25))
+```
 
-barcodes_all_drugs <- trip_tib_2000 %>%
-  filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")) %>% 
+### Figure legend
+(I-J) Same as Figures 7C-D, but now including heterochromatin types with 20 or fewer IPRs.
+
+## Panel S7I
+```{r FigS7I SSTR MMEJ balance heterochrom domains, fig.height=6, fig.width=12}
+# Ratio of SSTR vs MMEJ
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'MMEJ_SSTR', y_plabel=c(0.85, 1))
+```
+
+### Figure legend
+
+## Panel S7J
+```{r FigS7C SSTR MMEJ balance per heterochomatin domain in NU7441, fig.height=6, fig.width=10}
+tib.dt = data.table(trip_tib)
+
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
+
+domains = paste0(domain_levels, '_domain')
+
+indel.dt = unique(tib.dt[exp_pool == "mean_RSTP2_2000_LBR2_NU7441_ssODN_64",  
+                         c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR', 'NHEJ', 'MMEJ', 'efficiency', 'SSTR_freq', 'MMEJ_freq',
+                           domains), with=F])
+
+indel.dt = indel.dt %>% mutate(NHEJ_eff = NHEJ/efficiency, MMEJ_eff = MMEJ/efficiency)
+
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[, MMEJ_SSTR := 1-SSTR_MMEJSSTR, ]
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+
+
+# Ratio of SSTR vs all indels
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
+                   domain_levels, 'SSTR', y_plabel=c(0.5, 0.6))
+
+
+
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
+#                    domain_levels, 'SSTR_freq', min_count = 25)
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ', min_count = 25)
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ_freq', min_count = 25)
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ_SSTR', min_count = 25)
+
+
+barcodes_all_plasmids <- trip_tib %>%
   group_by(barcode) %>%
   dplyr::summarise(n = n()) %>%
-  filter(n == 2) %>%
+  filter(n == 4) %>%
   pull(barcode)
 
-indel.dt = trip_tib %>% filter(ssODN == "ssODN") %>%
-  dplyr::select(barcode, drug, SSTR, domains) %>%
-  filter(barcode %in% barcodes_all_drugs) %>%
-  spread(drug, SSTR) %>%
+indel.dt = trip_tib %>%
+  dplyr::select(barcode, plasmid, efficiency, domains) %>%
+  filter(barcode %in% barcodes_all_plasmids, plasmid != 'LBR2') %>%
+  spread(plasmid, efficiency) %>%
   distinct(barcode, .keep_all = TRUE) %>%
   data.table()
 
@@ -1197,41 +1141,70 @@ colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
 opt_df = get_combinations(domain_levels)
 
-eff.dt = melt(indel.dt, measure.vars=c('DMSO', 'NU7441'),
-              variable.name='condition', value.name='SSTR')
+### CHRIST ####
+# Can you now plot the ratio MMEJ_MMEJNHEJ of these domains that are significant vs the control condition to see the fold change and significance?
 
-plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR', group_by='condition', color=c("DMSO" = "black", "NU7441" = "gray"))
+eff.dt = melt(indel.dt, measure.vars=c('LBR1', 'LBR12', 'LBR15'),
+              variable.name='condition', value.name='efficiency')
+
+guide_cols <- guide_colors[1:3]
+
+plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'efficiency', group_by='condition', color=guide_cols, min_count = 20)
+
+groups <- unique(eff.dt$group)[c(1, 3:13)]
+
+for(i in groups) {
+  pvals <- eff.dt %>% 
+    dplyr::select(condition, efficiency, group) %>% 
+    group_by(condition) %>%
+    filter(group %in% c("iDomain", i)) %>%
+    do(broom::tidy(wilcox.test(efficiency ~ group, data = .))) %>%
+    ungroup() %>%
+    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
+    dplyr::select(condition, statistic, p.value, p.adj) %>%
+    arrange(p.adj)
+  print(i)
+  print(pvals)
+} 
+```
+### Figure Legend
+
+## Panel S7K
+```{r FigS7K SSTR ratio per heterochomatin domain in NU7441, fig.height=6, fig.width=10}
+indel.dt[, MMEJ_SSTR := 1-SSTR_MMEJSSTR, ]
+
+# Ratio of SSTR vs MMEJ
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
+                   domain_levels, 'MMEJ_SSTR', min_count = 25, y_plabel=c(0.85, 1))
 ```
 
-### Figure legend
-(I-J) Same as Figures 7C-D, but now including heterochromatin types with 20 or fewer IPRs.
+## Panel S7L
+```{r FigS7L scatterplot of SSTR proportion and frequency vs efficiency}
+formula <- y ~ x
 
-## Panel S7I
-```{r FigS7I SSTR MMEJ balance heterochrom domains, fig.height=6, fig.width=12}
-indel.dt = trip_tib %>% filter(ssODN == "ssODN") %>%
-  dplyr::select(barcode, drug, SSTR_MMEJSSTR, domains) %>%
-  filter(barcode %in% barcodes_all_drugs) %>%
-  mutate(SSTR_MMEJSSTR = 1-SSTR_MMEJSSTR) %>%
-  spread(drug, SSTR_MMEJSSTR) %>%
-  distinct(barcode, .keep_all = TRUE) %>%
-  data.table()
+trip_tib %>% filter(ssODN == "ssODN") %>% 
+ggplot(., aes(SSTR_freq, efficiency)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  ylim(0.45, 1) +
+  labs(title = "SSTR overall frequency vs efficiency",
+       x = "SSTR_freq",
+       y = "efficiency") +
+  stat_cor(method = "pearson", label.x = 0.15, label.y = .5) + facet_wrap(. ~ drug)
 
-indel.dt[indel.dt=='iDomain'] <- 0
-indel.dt[indel.dt=='Domain'] <- 1
+trip_tib %>% filter(ssODN == "ssODN") %>% 
+ggplot(., aes(SSTR, efficiency)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_smooth(method = glm) +
+  ylim(0.45, 1) +
+  labs(title = "SSTR proportion vs efficiency",
+       x = "SSTR",
+       y = "efficiency") +
+  stat_cor(method = "pearson", label.x = 0.15, label.y = .5) + facet_wrap(. ~ drug)
 
-indel.dt[is.na(LAD_domain), LAD_domain:=0]
-
-indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
-
-colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
-
-eff.dt = melt(indel.dt, measure.vars=c('DMSO', 'NU7441'),
-              variable.name='condition', value.name='SSTR_MMEJSSTR')
-
-plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR_MMEJSSTR', group_by='condition', color=c("DMSO" = "#007B4D", "NU7441" = "#83A88B"))
 ```
-
-### Figure legend
 
 
 # Session Info

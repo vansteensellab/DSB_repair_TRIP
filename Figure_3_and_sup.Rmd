@@ -38,7 +38,7 @@ pdf.options(useDingbats = FALSE)
 
 
 # INPUT DIRECTORY
-in.dir.date = 20200921
+in.dir.date = 20201029
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 
@@ -48,42 +48,18 @@ library(ggpubr)
 library(corrr)
 library(Hmisc)
 library(ggbeeswarm)
-library(RColorBrewer)
 library(dplyr)
 library(tidyr)
 library(tibble)
 library(ggpmisc)
-library(UpSetR)
-library(stringr)
-library(gridExtra)
 library(cowplot)
-library(grid)
-library(bnlearn)
-library(parallel)
 library(data.table)
-library(stats)
-library(glmnet)
-library(mda)
-library(earth)
-library(yaml)
-library(vip)
-library(caret)
-library(scales)
-library(ggcorrplot)
-library(pheatmap)
-library(ppcor)
+library(report)
+# library(ggcorrplot)
 
-color_redblue <- rev(brewer.pal(11,"RdBu"))
-duocolor <- c("#EE756E", "#2BB6BE")
 colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
 colores <- c("wt" = "#808184", "other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
-colori  <- c("other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "ssODN" = "#007A4C")
-colora <- c("0" = "#808184", "1" = "#E1251B", "-7" = "#223DA0", "-14" = "#223DA0")
 guide_colors <- c("LBR1" = "#c8e3b4", "LBR12" = "#7fccbb", "LBR15" = "#2c7fb9", "LBR2" = "#293990")
-#9e9ac8
-#756bb1
-#54278f
-colory <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "SSTR" = "#007A4C")
 
 feature_fill = c(insulator="#a6b5a3", repressive="#304441", euchromatin="#cda4cc",
                  transcribing="#ED9114", HDAC="#aac9e0", accessibility='#cebc85',
@@ -452,7 +428,7 @@ plot_comb_grid_beeswarm <- function(bix.dt, opt_df, domains, y_name, min_count=0
                    axis='tlbr'))
 }
 
-plot_comb_grid_boxplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
+plot_comb_grid_bothplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
                                    max_count=Inf, group_by=NULL, color=NULL){
   
   opt_melt = reshape2::melt(opt_df)
@@ -501,15 +477,7 @@ plot_comb_grid_boxplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
   
   indel_selection = bix.dt[group%in%group_levels, ]
   indel_selection[,group:=factor(group, levels=group_levels)]
-  
-  # wilcox_list = lapply(group_levels[group_levels!='iDomain'],
-  #                      function(g){
-  #                          x = indel_selection[group==g, y_name, with=F]
-  #                          y = indel_selection[group=='iDomain', y_name,
-  #                                              with=F]
-  #                          wilcox.test(unlist(x),unlist(y))
-  #                      })
-  
+
   group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
   
   count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
@@ -534,53 +502,11 @@ plot_comb_grid_boxplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
   symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
                 symbols = c("****", "***", "**", "*", " "))
   
-  ###################
-  # if (is.null(group_by)){
-  #   level_vec = indel_selection[, levels(group)]
-  #   wilcox_list = lapply(level_vec[level_vec!='iDomain'],
-  #                        function(g){
-  #                          x = indel_selection[group==g, y_name, with=F]
-  #                          y = indel_selection[group=='iDomain', y_name,
-  #                                              with=F]
-  #                          w = wilcox.test(unlist(x),unlist(y))
-  #                          return(data.table('group1'='iDomain', 'group2'=g,
-  #                                            'p'=w$p.value))
-  #                        })
-  #   wilcox_dt = do.call(rbind, wilcox_list)
-  #   wilcox_dt[,p_adj := p.adjust(p)]
-  #   wilcox_dt[,p_label := sprintf('%.3g', p_adj)]
-  #   wilcox_dt$y.position = seq(y_plabel[1], y_plabel[2],
-  #                              length.out=nrow(wilcox_dt))
-  #   
-  #   comparisons = lapply(level_vec[level_vec!='iDomain'],
-  #                        function(x){return(c('iDomain', x))})
-  #   boxpl = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
-  #     geom_quasirandom(width=0.3) +
-  #     stat_summary(fun.y=median, fun.ymin = median,
-  #                  fun.ymax = median,
-  #                  geom="crossbar", width = 0.5,
-  #                  color='red') +
-  #     stat_pvalue_manual(wilcox_dt, label = "p_label")
-  # } else {
-  #   wilcox_dt = indel_selection[,test_wilcox(.SD, group_by, y_name),
-  #                               by='group']
-  #   wilcox_dt[,p_adj:=p.adjust(p_value)]
-  #   wilcox_dt[,p_signif:=symnum(p_adj, cutpoints=symnum$cutpoints,
-  #                               symbols=symnum$symbols)]
-  #   boxpl = ggplot(indel_selection,
-  #                  aes_string(x='group', y=y_name, color=group_by)) +
-  #     geom_boxplot(dodge.width=1, outlier.shape = NA) +
-  #     scale_fill_manual(values=color) +
-  #     geom_text(data=wilcox_dt, aes(x=group, y=0.8, label=p_signif),
-  #               inherit.aes=F)
-  # }
-  
-  ###################
   if (is.null(group_by)){
     boxpl = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
       geom_quasirandom(width=0.3) +
-      stat_summary(fun.y=median, fun.ymin = median,
-                   fun.ymax = median,
+      stat_summary(fun=median, fun.min = median,
+                   fun.max = median,
                    geom="crossbar", width = 0.5,
                    color='red') +
       stat_compare_means(aes(label = ..p.signif..),
@@ -590,11 +516,19 @@ plot_comb_grid_boxplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
   } else {
     
     boxpl = ggplot(indel_selection,
-                   aes_string(x='group', y=y_name, fill=group_by)) +
+                   aes_string(x='group', y=y_name, color=group_by)) +
       guides(fill=F) +
-      scale_fill_manual(values=color) +
-      stat_summary(fun.data = quantiles_95, 
-                   geom="boxplot", 
+      # scale_fill_manual(values=color) +
+      scale_color_manual(values=color) +
+      # geom_violin(position=position_dodge(width=1)) +
+      geom_quasirandom(dodge.width = 1) +
+      # stat_summary(fun.data = quantiles_95,
+      #              geom="boxplot",
+      #              position=position_dodge(width=1),
+      #              width = 0.2) +
+      stat_summary(fun=median, fun.min = median,
+                   fun.max = median,
+                   geom="crossbar", width = 0.6,
                    position=position_dodge(width=1))
   }
   boxpl = boxpl +
@@ -636,12 +570,11 @@ plot_comb_grid_boxplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
                    rel_widths=c(1,10), rel_heights=c(15,1,5), align='vh',
                    axis='tlbr'))
 }
+
 ```
 
 # Data import
 ```{r loading data, message=FALSE, warnings=FALSE}
-chip.dt = readRDS('/DATA/projects/DSBrepair/data/R/cl20191217_ChIP_mean_selection.RDS')
-
 trip_tib_mut_2000 = readRDS(paste0(in.dir, "RSTP2_Indel_Chromatin_2kb.RDS"))
 trip_tib_2000 = readRDS(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RDS"))
 
@@ -726,7 +659,7 @@ p1 <- trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmi
   theme_bw(base_size = 16) +
   ylim(0, 1) +
   xlim(0, 1) +
-  stat_cor(method = "spearman") + 
+  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = "bottom") + 
   coord_fixed()
 
 p2 <- trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR12, LBR2))  +  
@@ -735,7 +668,7 @@ p2 <- trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmi
   ylim(0, 1) +
   xlim(0, 1) +
   theme_bw(base_size = 16) +
-  stat_cor(method = "spearman") + 
+  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = "bottom") + 
   coord_fixed()
 
 p3 <- trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR15, LBR2)) +  
@@ -824,12 +757,6 @@ domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
 
 domains = paste0(domain_levels, '_domain')
 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR1_DMSO_64'], opt_df,
-#                    domain_levels, 'efficiency', min_count=20)
-domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
-
-domains = paste0(domain_levels, '_domain')
-
 barcodes_all_plasmids <- trip_tib %>%
   group_by(barcode) %>%
   dplyr::summarise(n = n()) %>%
@@ -863,7 +790,7 @@ eff.dt = melt(indel.dt, measure.vars=c('LBR1', 'LBR12', 'LBR15'),
 
 guide_cols <- guide_colors[1:3]
 
-plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'efficiency', group_by='condition', color=guide_cols, min_count = 20)
+plot_comb_grid_bothplot(eff.dt, opt_df, domain_levels, 'efficiency', group_by='condition', color=guide_cols, min_count = 20)
 
 groups <- unique(eff.dt$group)[c(1, 3:13)]
 
@@ -888,13 +815,12 @@ for(i in groups) {
 (F) Same as E, but boxplots for the other three sgRNAs. The boxes represent 75% confidence interval, the horizontal line within represents the median, the error bars represent and 95% confidence intervals.
 
 
-
 # Supplementary Figure 3
 ## Panel S3A
-```{r FigS3A indelspectra other guides, fig.height=10, fig.width=4}
+```{r FigS3A indelspectra other guides, fig.height=8, fig.width=10}
 ggplot(filter(trip_tib_mut, mutation != "ssODN", nexp > 1),
        aes(mutation, freq)) +
-  geom_quasirandom() +
+  geom_quasirandom(size = .5) +
   theme_bw(base_size = 16) +
   ylim(0, 1) +
   facet_grid(plasmid ~ .)
@@ -908,35 +834,14 @@ res = trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>%
   spread(plasmid, efficiency) %>% 
   column_to_rownames(., var = "barcode") %>%
   as.matrix() %>%
-  rcorr()
+  rcorr(., type="spearman")
 
 library(corrplot)
-corrplot(res$r, type = "lower", order = "hclust", 
+corrplot(res$r, type = "upper", order = "hclust", 
          tl.col = "black", tl.srt = 45, diag = FALSE)
 ```
 
 ### Figure Legend
-
-
-## Panel S3C
-```{r FigS3C correlation TIF all guides shuffled data, fig.height=5, fig.width=5}
-# Same but shuffled data. 
-res_shuffle = trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% 
-  spread(plasmid, efficiency) %>% 
-  column_to_rownames(., var = "barcode") %>%
-  mutate(LBR2 = sample(LBR2),
-         LBR1 = sample(LBR1),
-         LBR12 = sample(LBR12),
-         LBR15 = sample(LBR15)) %>%
-  as.matrix() %>%
-  rcorr()
-
-corrplot(res_shuffle$r, type = "upper", order = "hclust", 
-         tl.col = "black", tl.srt = 45, diag = FALSE)
-```
-
-### Figure Legend
-
 
 ## Panel S3C
 ```{r FigS3C chip clone 5, fig.height=4, fig.width=12}
@@ -993,6 +898,11 @@ ggplot(signal.amp.seq, aes(value,amp.seq)) +
 <!-- ``` -->
 
 <!-- ### Figure Legend -->
+
+# Bibliography
+```{r citations}
+cite_packages()
+```
 
 
 # Session Info

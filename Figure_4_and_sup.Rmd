@@ -36,71 +36,24 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20200921
+in.dir.date = 20201029
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
 library(ggplot2)
 library(ggpubr)
-# library(reshape2)
-# library(tibble)
-# library(GenomicRanges)
-# library(rtracklayer)
-library(corrr)
 library(Hmisc)
 library(ggbeeswarm)
-library(RColorBrewer)
 library(data.table)
 library(dplyr)
-# library(plyr)
 library(tidyr)
-# library(stringr)
-# library(plotly)
-library(ggpmisc)
-
-library(stats)
-library(glmnet)
-
-
+library(broom)
 library(cowplot)
 
-library(mda)
-library(earth)
-library(yaml)
-library(vip)
-library(caret)
-library(scales)
-library(glmnet)
-library(gridExtra)
-library(ggcorrplot)
-library(bnlearn)
-library(pheatmap)
-library(ppcor)
-library(parallel)
-
-
-color_redblue <- rev(brewer.pal(11,"RdBu"))
-duocolor <- c("#EE756E", "#2BB6BE")
-colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
-colores <- c("wt" = "#808184", "other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
-colori  <- c("other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "ssODN" = "#007A4C")
-colora <- c("0" = "#808184", "1" = "#e1251b", "-7" = "#26419a", "-14" = "#26419a")
-coloru <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "MMEJplusNHEJplusHDR" = "#EE8A2A", "HDR" = "#007A4C", "MMEJplusHDR" = "#EE8A2A")
-colory <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "SSTR" = "#007A4C")
-
-measure_color = c(NHEJ='#e1251b', MMEJ='#26419a', SSTR='#007A4C', None='grey')
-
-method_color = c(MARS='#00bfc4', LASSO='#f8766d')
-lad_color <- c(LAD="#802cdc", iLAD="#dfaf2f")
-sign_color <- c(down="#AA6375", up="#7B9A36")
-
-feature_fill = c(insulator="#a6b5a3", repressive="#304441", euchromatin="#cda4cc",
-                 transcribing="#ED9114", HDAC="#aac9e0", accessibility='#cebc85',
-                 methylation='#7dc98f')
-
-feature_color = c(insulator="black", repressive="white", euchromatin="black",
-                  transcribing="black", HDAC="black", accessibility='black',
-                  methylation='black')
+## Colors used in this script
+colores <- c("MMEJ_MMEJNHEJ" = "black")
+colore <- c("wt" = "#808184", "other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
+chrom_colors = c( c("euchromatin" = "#F7941D", "other" = "#838687",  "H3K27me3" = "#D21F8A", "triple" = "#662D91"))
 ```
 
 ## Custom functions
@@ -283,14 +236,6 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0,
   indel_selection = indel.dt[group%in%group_levels, ]
   indel_selection[,group:=factor(group, levels=group_levels)]
   
-  # wilcox_list = lapply(group_levels[group_levels!='iDomain'],
-  #                      function(g){
-  #                          x = indel_selection[group==g, y_name, with=F]
-  #                          y = indel_selection[group=='iDomain', y_name,
-  #                                              with=F]
-  #                          wilcox.test(unlist(x),unlist(y))
-  #                      })
-  
   group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
   
   count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
@@ -336,8 +281,8 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0,
                          function(x){return(c('iDomain', x))})
     beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
       geom_quasirandom(width=0.3) +
-      stat_summary(fun.y=median, fun.ymin = median,
-                   fun.ymax = median,
+      stat_summary(fun=median, fun.min = median,
+                   fun.max = median,
                    geom="crossbar", width = 0.5,
                    color='red') +
       stat_pvalue_manual(wilcox_dt, label = "p_label")
@@ -351,8 +296,8 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0,
                       aes_string(x='group', y=y_name, color=group_by)) +
       geom_quasirandom(dodge.width=1) +
       scale_color_manual(values=color) +
-      stat_summary(aes_string(group=group_by), fun.y=median,
-                   fun.ymin = median, fun.ymax = median,
+      stat_summary(aes_string(group=group_by), fun.=median,
+                   fun.min = median, fun.max = median,
                    geom="crossbar", width = 0.5,
                    color='red',
                    position= position_dodge(width =1)) +
@@ -360,34 +305,6 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0,
                 inherit.aes=F)
   }
   
-  # if (is.null(group_by)){
-  #   beeswarm = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
-  #     geom_quasirandom(width=0.3) +
-  #     stat_summary(fun.y=median, fun.ymin = median,
-  #                  fun.ymax = median,
-  #                  geom="crossbar", width = 0.5,
-  #                  color='red') +
-  #     stat_compare_means(aes(label = ..p.signif..),
-  #                        symnum.args = symnum,
-  #                        method = 'wilcox.test',
-  #                        ref.group='iDomain')
-  # } else {
-  #   form = formula(paste(y_name, '~', group_by))
-  #   comp = compare_means(form, group.by = "group",method = "wilcox.test", 
-  #                        paired = TRUE, data=indel_selection)
-  #   
-  #   beeswarm = ggplot(indel_selection,
-  #                     aes_string(x='group', y=y_name, color=group_by)) +
-  #     geom_quasirandom(dodge.width=1) +
-  #     scale_color_manual(values=color) +
-  #     stat_summary(aes_string(group=group_by), fun.y=median,
-  #                  fun.ymin = median, fun.ymax = median,
-  #                  geom="crossbar", width = 0.5,
-  #                  color='red',
-  #                  position= position_dodge(width =1)) +
-  #     geom_text(data=comp, aes(x=group, y=0.8, label=p.signif),
-  #               inherit.aes=F)
-  # }
   beeswarm = beeswarm +
     theme_bw() +
     geom_vline(xintercept=seq(1.5, length(unique(indel.dt$group))-0.5, 1),
@@ -395,9 +312,7 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0,
     theme(axis.title=element_blank(),
           axis.text.x=element_blank(),
           panel.grid.major.x = element_blank(),
-          axis.ticks.x=element_blank()) +
-    ylim(0, 0.6)
-  
+          axis.ticks.x=element_blank())
   
   count = data.frame(domain=gsub('_domain', '', domains),
                      count=colSums(indel.dt[,..domains], na.rm=T))
@@ -428,12 +343,163 @@ plot_comb_grid <- function(indel.dt, opt_df, domains, y_name, min_count=0,
                    axis='tlbr'))
 }
 
+quantiles_95 <- function(x) {
+  r <- quantile(x, probs=c(0.05, 0.25, 0.5, 0.75, 0.95))
+  names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
+  r
+}
+
+plot_comb_grid_bothplot <- function(bix.dt, opt_df, domains, y_name, min_count=0,
+                                   max_count=Inf, group_by=NULL, color=NULL){
+  
+  opt_melt = reshape2::melt(opt_df)
+  colnames(opt_melt) = c('group', 'domain', 'is_in')
+  
+  opt_melt$is_in = ifelse(opt_melt$is_in, 'in', 'out')
+  opt_melt$domain = factor(opt_melt$domain, levels=domains)
+  
+  
+  group_list = lapply(rownames(opt_df), function(opt_name){
+    opt = opt_df[opt_name, ]
+    in_vec = domains[opt]
+    out_vec = domains[!opt]
+    
+    in_sum = rowSums(bix.dt[,..in_vec])
+    out_sum = rowSums(bix.dt[,..out_vec])
+    if (length(in_vec)==0){
+      in_group = which(out_sum == 0)
+    } else if (length(out_vec) == 0){
+      in_group = which(in_sum==length(in_vec))
+    } else  {
+      in_group = which(in_sum == length(in_vec) & out_sum==0)
+    }
+    return(in_group)
+  })
+  
+  names(group_list) = rownames(opt_df)
+  for (opt_name in names(group_list)){
+    i_vec = group_list[[opt_name]]
+    bix.dt[i_vec, group := opt_name]
+  }
+  if (is.null(group_by)){
+    group_count_df = data.frame(bix.dt[,table(group)])
+  } else {
+    group_count_df = data.frame(bix.dt[,table(group)/length(unique(get(group_by)))])
+  }
+  group_count_df = group_count_df[order(match(group_count_df$group, rownames(opt_df))),]
+  # print(group_count_df)
+  group_count_sel = group_count_df[group_count_df$Freq>=min_count,]
+  group_count_sel = group_count_sel[group_count_sel$Freq<=max_count,]
+  group_levels =  group_count_sel$group
+  opt_sel = opt_melt[opt_melt$group %in% group_levels, ]
+  
+  opt_sel$group = factor(opt_sel$group, levels=group_levels)
+  # print(opt_sel)
+  
+  indel_selection = bix.dt[group%in%group_levels, ]
+  indel_selection[,group:=factor(group, levels=group_levels)]
+
+  group_count_sel$group = factor(group_count_sel$group, levels=group_levels)
+  
+  count_plot = ggplot(group_count_sel, aes(x=group,y=1, label=Freq)) +
+    geom_label() +
+    theme_void()
+  
+  
+  
+  dots = ggplot(opt_sel, aes(x=group, y=domain, color=is_in)) +
+    geom_point(size=2) +
+    geom_line(data=opt_sel[opt_sel$is_in=='in',], aes(group=group)) +
+    theme_bw() +
+    scale_color_manual(values=c('in'='black', 'out'='grey70')) +
+    guides(color=FALSE)  +
+    geom_vline(xintercept=seq(1.5, length(unique(bix.dt$group))-0.5, 1),
+               lwd=0.5, colour="grey90") +
+    theme(axis.title=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(),
+          panel.grid.major = element_blank())
+  
+  symnum = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
+                symbols = c("****", "***", "**", "*", " "))
+  
+  if (is.null(group_by)){
+    boxpl = ggplot(indel_selection, aes_string(x='group', y=y_name)) +
+      geom_quasirandom(width=0.3) +
+      stat_summary(fun=median, fun.min = median,
+                   fun.max = median,
+                   geom="crossbar", width = 0.5,
+                   color='red') +
+      stat_compare_means(aes(label = ..p.signif..),
+                         symnum.args = symnum,
+                         method = 'wilcox.test',
+                         ref.group='iDomain')
+  } else {
+    
+    boxpl = ggplot(indel_selection,
+                   aes_string(x='group', y=y_name, color=group_by)) +
+      guides(fill=F) +
+      # scale_fill_manual(values=color) +
+      scale_color_manual(values=color) +
+      # geom_violin(position=position_dodge(width=1)) +
+      geom_quasirandom(dodge.width = 1) +
+      # stat_summary(fun.data = quantiles_95,
+      #              geom="boxplot",
+      #              position=position_dodge(width=1),
+      #              width = 0.2) +
+      stat_summary(fun=median, fun.min = median,
+                   fun.max = median,
+                   geom="crossbar", width = 0.6,
+                   position=position_dodge(width=1))
+  }
+  boxpl = boxpl +
+    theme_bw() +
+    geom_vline(xintercept=seq(1.5, length(unique(bix.dt$group))-0.5, 1),
+               lwd=0.5, colour="grey90") +
+    theme(axis.title=element_blank(),
+          axis.text.x=element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.ticks.x=element_blank()) +
+    ylim(0, 1)
+  
+  
+  count = data.frame(domain=gsub('_domain', '', domains),
+                     count=colSums(bix.dt[,..domains], na.rm=T))
+  
+  count$domain = factor(count$domain, levels=domain_levels)
+  
+  
+  histogram = ggplot(count, aes(x=1, y=domain, label = count)) +
+    geom_label() +
+    theme_bw() +
+    theme(plot.background = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          axis.title=element_blank(),
+          axis.text.x=element_blank(),
+          axis.ticks=element_blank())
+  
+  empty = ggplot(data=data.frame(1,1),aes(x=1,y=1)) +
+    geom_point() +
+    theme_void()
+  
+  count_beeswarm = plot_grid(boxpl, count_plot, ncol=1, rel_heights=c(20,1),
+                             align='v', axis='lr')
+  return(plot_grid(empty, boxpl, empty, count_plot,
+                   histogram, dots, nrow=3,
+                   rel_widths=c(1,10), rel_heights=c(15,1,5), align='vh',
+                   axis='tlbr'))
+}
 ```
 
 # Data import
 ```{r load data, message=FALSE, warnings=FALSE}
 trip_tib_mut_2000 = readRDS(paste0(in.dir, "RSTP2_Indel_Chromatin_2kb.RDS"))
 trip_tib_2000 = readRDS(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RDS"))
+
+TRIP_ChIP <- readRDS("/DATA/usr/x.vergara/XV_ChIPIndels/XV20200902_DDR_RS_revision/XV20200902_DDR_RS_revision/data/xv20200915_DDR_data_CHIP.rds") %>% 
+  as_tibble() %>% filter(!antibody %in% c("gH2AX", "LigIII"))
 ```
 
 
@@ -497,8 +563,54 @@ ggplot(pathway_distribution,
         axis.ticks.x=element_blank()) +
   ylab("Pathway Contribution") +
   xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
+  scale_fill_manual("legend", values = colore) +
   ggtitle("Pathway contribution per barcode") 
+
+
+
+### Ordered on efficiency with efficiency plot on top.
+# 
+pathway_distribution <- trip_tib %>%
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_64") %>%
+  gather(NHEJ, MMEJ, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+barcode_order <- trip_tib %>%
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_64") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>%
+  dplyr::select(barcode)
+
+pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("MMEJ", "other_indels",  "NHEJ"))
+
+trip_tib %>%
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_64") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colore) +
+  ggtitle("Pathway contribution per barcode")
+
+
 ```
 
 ### Figure legend
@@ -512,8 +624,6 @@ NHEJ.hist.corr <- CorrelationDFMean(trip_tib, "mean_RSTP2_2000_LBR2_DMSO_64", "M
   arrange(corr) %>% pull(rowname) %>% factor(.,levels = .)
 
 lims = 1
-# colores <- c("MMEJ_MMEJNHEJ" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a")
-colores <- c("MMEJ_MMEJNHEJ" = "black")
 
 CorrelationPlotMean(trip_tib, "mean_RSTP2_2000_LBR2_DMSO_64", c("MMEJ_MMEJNHEJ") , targets = NHEJ.hist.corr)
 ```
@@ -536,7 +646,7 @@ trip_tib %>% pull(barcode) %>% unique()  %>% length()
 #   ggplot(., aes(ratios, fill = pathway, alpha = 0.8)) +
 #   geom_density() +
 #   theme_bw(base_size = 16) +
-#   scale_fill_manual("legend", values = colores)
+#   scale_fill_manual("legend", values = colore)
 ```
 ### Figure legend
 Distribution of log2(MMEJ/(MMEJ+NHEJ) ratios across all IPRs. 
@@ -581,7 +691,7 @@ colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 opt_df = get_combinations(domain_levels)
 #
 plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_64'], opt_df,
-               domain_levels, 'MMEJ_MMEJNHEJ', min_count = 20)
+               domain_levels, 'MMEJ_MMEJNHEJ', min_count = 20, y_plabel=c(0.55, 0.70))
 ```
 
 ### Figure legend
@@ -589,36 +699,24 @@ plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_64'], opt_df,
 ####### XABI CHIP       
 ## Panel 4F 
 
-```{r Fig4F MMEJ ratio per heterochomatin domain, fig.height=7, fig.width=12}
-TRIP_ChIP <- readRDS("/DATA/usr/x.vergara/XV_ChIPIndels/XV20200902_DDR_RS_revision/XV20200902_DDR_RS_revision/data/xv20200915_DDR_data_CHIP.rds") %>% as_tibble() %>% filter(!antibody %in% c("gH2AX", "LigIII"))
-
-
+```{r Fig4F DNA damage response protein pull down, fig.height=4, fig.width=10}
 mean_trip_chip <- TRIP_ChIP %>%
          dplyr::group_by(antibody, plasmid, barcode, chromatin) %>%
          dplyr::summarise(norm.pull.down = mean(norm.pull.down),
                           replicate = "mean")
-# 
-TRIP_ChIP %>%
-  dplyr::select(antibody, plasmid, barcode, chromatin, norm.pull.down, replicate) %>%
-  bind_rows(., mean_trip_chip) %>%
-  mutate(class = ifelse(replicate == "mean", "mean", "sep")) %>%
-  ggplot(., aes(plasmid,log2(norm.pull.down), color = replicate, alpha = factor(class, levels = c("sep", "mean")))) +
-  geom_quasirandom() +
-  facet_wrap(~ antibody) +
-  theme_bw() +
-  coord_cartesian() +
-  ylab("log2(Normalized pull down counts)") +
-  ggtitle("DNA damage response protein pull down")
 
+chrom_colors2 = c( c("Euchromatin" = "#F7941D", "other-heterochromatin" = "#838687",  "H3K27me3" = "#D21F8A", "Triple Heterochromatin" = "#662D91"))
 
 ggplot(mean_trip_chip, aes(plasmid,log2(norm.pull.down), color = chromatin)) +
   geom_quasirandom() +
-  facet_wrap(~ antibody) +
-  theme_bw() +
+  facet_grid(~ antibody) +
   coord_cartesian() +
+  theme_bw(base_size = 16) + 
+  scale_color_manual(values = chrom_colors2) +
   ylim(-4.5, 2) +
   ylab("log2(Normalized pull down counts)") +
-  ggtitle("DNA damage response protein pull down")
+  ggtitle("DNA damage response protein pull down") +
+  theme(legend.position = "bottom")
 ```
 
 
@@ -627,66 +725,179 @@ ggplot(mean_trip_chip, aes(plasmid,log2(norm.pull.down), color = chromatin)) +
 
 ## Panel 4G 
 
+```{r Fig4G normalized ChIP vs adjusted efficiency, fig.height=4, fig.width=10}
+## Prepare models for LBR1, LBR12 & LBR15 to use to "spread" the LBR2 efficiency. This will allow us to maybe bipass the saturation in highly efficient IPRs.
+trip_tib_otherguides <- trip_tib_2000 %>%
+  filter(exp_pool %in% c("mean_RSTP2_2000_LBR1_DMSO_64",
+                         "mean_RSTP2_2000_LBR2_DMSO_64",
+                         "mean_RSTP2_2000_LBR12_DMSO_64",
+                         "mean_RSTP2_2000_LBR15_DMSO_64"))
+otherguides_barcodes <- trip_tib_otherguides %>% 
+  group_by(barcode) %>% 
+  dplyr::summarise(count = n()) %>% 
+  filter(count > 1) %>% 
+  pull(barcode)
+
+length(otherguides_barcodes)
+
+clone5_barcodes <- trip_tib_2000 %>% filter(cell_line == "RSTP2_clone5") %>% distinct(barcode) %>% pull()
+
+trip_tib_otherguides$plasmid <- factor(trip_tib_otherguides$plasmid, levels = c("LBR1", "LBR12", "LBR15" ,"LBR2"))
+
+trip_tib_otherguides_wide <- trip_tib_otherguides %>% filter(barcode %in% otherguides_barcodes) %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) 
 
 
-```{r Fig4G MMEJ ratio per heterochomatin domain, fig.height=7, fig.width=12}
-fc.mean.DDR <- TRIP_ChIP %>% 
+# trip_tib_otherguides_wide %>% ggplot(., aes(LBR2, LBR15))  +  
+#   geom_point() +
+#   geom_smooth(method= "loess") +
+#   ylim(0, 1) +
+#   xlim(0, 1) +
+#   theme_bw(base_size = 16) +
+#   stat_cor(method = "spearman") + 
+#   coord_fixed()
+
+
+
+# Make the loess model on LBR1, 12 & 15 with LBR2. 
+loess_LBR1 <- loess(LBR1 ~ LBR2, trip_tib_otherguides_wide, 
+                    control = loess.control(surface = "direct")) # This option allows for extrapolation
+loess_LBR12 <- loess(LBR12 ~ LBR2, trip_tib_otherguides_wide, 
+                     control = loess.control(surface = "direct"))
+loess_LBR15 <- loess(LBR15 ~ LBR2, trip_tib_otherguides_wide, 
+                     control = loess.control(surface = "direct"))
+
+
+fc.mean.DDR.model <- TRIP_ChIP %>% 
   left_join(TRIP_ChIP %>% 
               dplyr::group_by(chromatin,antibody,barcode,plasmid) %>% 
               dplyr::summarise(m.fc = mean(fold.change), 
-                               m.ce = mean(freqcut), 
-                               m.MMEJ = mean(MMEJscore)), 
-          
-            by = c("chromatin","antibody","barcode","plasmid")) %>% 
+                               m.TIF = mean(freqcut), 
+                               m.MMEJ = mean(MMEJscore),
+                               m.pulldown = mean(norm.pull.down), 
+                               by = c("chromatin","antibody","barcode","plasmid"))) %>% 
   filter(!antibody %in% c("LigIII","gH2AX")) %>% 
-  distinct(barcode, antibody, m.fc, m.ce, m.MMEJ, plasmid, chromatin)
+  distinct(barcode, antibody, m.fc, m.TIF, 
+           m.pulldown, m.MMEJ, plasmid, chromatin) %>%
+  ungroup() %>%
+  pivot_wider(names_from = plasmid, 
+              values_from = c(m.fc, m.pulldown, m.MMEJ, m.TIF)) %>% 
+  mutate(norm.pulldown = m.pulldown_LBR2 - m.pulldown_EV) %>%
+  pivot_longer(-c(antibody, barcode, chromatin, norm.pulldown),
+               names_to = c(".value", "plasmid"),
+               names_sep = "_")
 
-# specifications of how to model,
-# coming from somewhere else
-outcome <- "m.fc"
-variables <- c("m.ce", "m.MMEJ")
+fc.mean.DDR.model = fc.mean.DDR.model %>% 
+  mutate(LBR1_pred = predict(loess_LBR1, m.TIF, se = TRUE)$fit, 
+         LBR12_pred = predict(loess_LBR12, m.TIF, se = TRUE)$fit,
+         LBR15_pred = predict(loess_LBR15, m.TIF, se = TRUE)$fit) %>% 
+  mutate(mean_pred = rowMeans(dplyr::select(., c("LBR1_pred", "LBR12_pred", "LBR15_pred"))),
+         log2_mean_pred = log2(mean_pred),
+         log2_efficiency = log2(m.TIF),
+         log2_m.pulldown = log2(norm.pulldown))
 
-# our modeling effort, 
-# fully parameterized!
-f <- as.formula(
-  paste(outcome, 
-        paste(variables, collapse = " + "), 
-        sep = " ~ "))
-print(f)
-# mpg ~ cyl + disp + hp + carb
+### Modeling with decompressed efficiency (based on LBR1, LBR12 & LBR15)
+lm_guides_LigIV <- nls(log2_m.pulldown ~ a + b*log2_mean_pred, algorithm = "port", 
+                       start = c(a = 0, b = 1), lower = c(a = -Inf,b = 1), 
+                       upper = c(Inf, b = 1), 
+                       data = filter(fc.mean.DDR.model,
+                                     plasmid == "LBR2", antibody == "LigIV"))
+lm_guides_MRE11 <- nls(log2_m.pulldown ~ a + b*log2_mean_pred, algorithm = "port", 
+                       start = c(a = 0, b = 1), lower = c(a = -Inf,b = 1), 
+                       upper = c(Inf, b = 1), 
+                       data = filter(fc.mean.DDR.model,
+                                     plasmid == "LBR2", antibody == "MRE11"))
+lm_guides_POLQ <- nls(log2_m.pulldown ~ a + b*log2_mean_pred, algorithm = "port", 
+                      start = c(a = 0, b = 1), lower = c(a = -Inf,b = 1), 
+                      upper = c(Inf, b = 1), 
+                      data = filter(fc.mean.DDR.model,
+                                    plasmid == "LBR2", antibody == "POLQ"))
+lm_guides_Rad51 <- nls(log2_m.pulldown ~ a + b*log2_mean_pred, algorithm = "port", 
+                       start = c(a = 0, b = 1), lower = c(a = -Inf,b = 1), 
+                       upper = c(Inf, b = 1), 
+                       data = filter(fc.mean.DDR.model,
+                                     plasmid == "LBR2", antibody == "Rad51"))
 
-AB <- unique(fc.mean.DDR$antibody)
-
-for (i in AB) {
-model <- lm(f, data = filter(fc.mean.DDR, antibody == i))
-print(i)
-print(summary(model))
-}
-
-ggplot(fc.mean.DDR %>% filter(plasmid == "LBR2"), aes(m.ce,m.fc, color = chromatin, group = 1)) + 
-  geom_point() + geom_smooth(method = lm) + stat_cor() + facet_wrap(~ antibody, scales = "free") + 
-  theme_bw() + coord_cartesian() + ylab("mean fold change") + xlab("Average gene editing frequency") + 
-  ggtitle("gene editing frequency vs. mean fold change")
-
-ggplot(fc.mean.DDR %>% filter(plasmid == "LBR2"), aes(m.MMEJ,log2(m.fc), color = chromatin, group = 1)) + 
-  geom_point() + geom_smooth(method = lm) + stat_cor() + facet_wrap(~ antibody, scales = "free") + theme_bw() + coord_cartesian() + ylab("log2(Average Fold change)") + xlab("Average gene editing frequency") + ggtitle("MMEJ balance vs. mean fold change")
-
-ggplot(fc.mean.DDR %>% filter(plasmid == "LBR2"), aes(m.ce, m.MMEJ, color = chromatin, group = 1)) + geom_point() + geom_smooth(method = lm) + stat_cor() + facet_wrap(~ antibody, scales = "free") + theme_bw() + coord_cartesian() + xlab("gene editing frequency") + ylab("MMEJ balance") + ggtitle("gene editing frequency vs. MMEJ balance")
+antibody = c("LigIV", "MRE11", "POLQ", "Rad51")
+intercepts = c(coef(lm_guides_LigIV)[[1]], 
+               coef(lm_guides_MRE11)[[1]], 
+               coef(lm_guides_POLQ)[[1]], 
+               coef(lm_guides_Rad51)[[1]])
+intercept_df = data.frame(antibody, intercepts)
 
 
-
-
-
-set.seed(123)
-training.samples <- fc.mean.DDR$barcode %>%
-  createDataPartition(p = 0.8, list = FALSE)
-train.data  <- fc.mean.DDR[training.samples, ]
-test.data <- fc.mean.DDR[-training.samples, ]
+## Plotting the decompressed total indel frequency, with in red the predicted relationshop (model with slope = 1)
+fc.mean.DDR.model %>% 
+  filter(plasmid == "LBR2") %>% 
+  ggplot(., aes(log2_mean_pred, log2_m.pulldown, color = chromatin, group = 1)) + 
+  geom_point(size = 3) +
+  geom_smooth(method = lm) + 
+  geom_abline(data= intercept_df, aes(intercept = intercepts, slope = 1), size = 1, color = "red") +
+  stat_cor() + 
+  facet_grid(~ antibody) + 
+  scale_color_manual(values = chrom_colors2) +
+  theme_bw(base_size = 16) + 
+  ylab("log2(mean pull down)") + 
+  xlab("log2(average modelled gene editing frequency)") + 
+  ggtitle("modelled gene editing frequency vs. mean pull down") +
+  theme(legend.position = "bottom")
 ```
 
 ### Figure legend
 
+## Panel 4H
+```{r Fig4H residuals vs MMEJ:NHEJ balance, fig.height=4, fig.width=10}
+# Calculate the residuals from the datapoints in the previous figure from the predicted relationship
+LigIV_res <- lm_guides_LigIV %>% augment %>% mutate(antibody = "LigIV")
+MRE11_res <- lm_guides_MRE11 %>% augment  %>% mutate(antibody = "MRE11")
+POLQ_res <- lm_guides_POLQ %>% augment %>% mutate(antibody = "POLQ")
+Rad51_res <- lm_guides_Rad51 %>% augment %>% mutate(antibody = "Rad51")
 
+resids_model = rbind(LigIV_res, MRE11_res, POLQ_res, Rad51_res)
+
+# fc.mean.DDR.model %>% filter(plasmid == "LBR2") %>% left_join(resids_model) %>%
+#   ggplot(., aes(m.TIF, .resid, color = chromatin)) + geom_jitter(width = .2, size = 3) +facet_wrap(. ~ antibody) + 
+#     scale_color_manual(values = chrom_colors2) +
+#     theme_bw(base_size = 16) + 
+#     ylab("residuals") + 
+#     xlab("modelled total indel frequency") + 
+#     ggtitle("residuals from the red model (slope = 1) per antibody and chromatin group")
+
+## Plot the residuals against the MMEJ:NHEJ balance. 
+fc.mean.DDR.model %>% 
+  filter(plasmid == "LBR2") %>% 
+  left_join(resids_model) %>%
+  ggplot(., aes(m.MMEJ, .resid, color = chromatin, group = 1)) + geom_point(size = 3) +
+  facet_grid(. ~ antibody) + 
+  scale_color_manual(values = chrom_colors2) +
+  theme_bw(base_size = 16) + 
+  geom_smooth(method = lm) + 
+  stat_cor() + 
+  ylab("residuals") + 
+  xlab("MMEJ:NHEJ balance") + 
+  ggtitle("residuals from the red model (slope = 1) vs MMEJ:NHEJ balance per antibody") +
+  theme(legend.position = "bottom")
+```
+
+
+
+## Panel 4I
+
+```{r Fig4I MMEJ balance vs. mean fold change, fig.height=4, fig.width=10}
+fc.mean.DDR.model %>% 
+  filter(plasmid == "LBR2") %>%
+  ggplot(., aes(m.MMEJ,log2(m.fc), color = chromatin, group = 1)) + 
+  geom_point(size = 3) +
+  geom_smooth(method = lm) + 
+  scale_color_manual(values = chrom_colors2) +
+  stat_cor() + 
+  facet_grid(. ~ antibody) + 
+  theme_bw(base_size = 16) + 
+  coord_cartesian() +
+  ylab("log2(average protein ChIP cut/uncut) at 16h") + 
+  xlab("MMEJ/(MMMEJ+NHEJ) at 72h") + 
+  ggtitle("MMEJ:NHEJ balance vs. mean fold change") +
+  theme(legend.position = "bottom")
+```
 
 # Supplementary Figure 4
 ## Panel S4A
@@ -745,21 +956,91 @@ colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 opt_df = get_combinations(domain_levels)
 #
 plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_64'], opt_df,
-               domain_levels, 'MMEJ_MMEJNHEJ')
+               domain_levels, 'MMEJ_MMEJNHEJ', y_plabel=c(0.55, 0.70))
 ```
 
 ### Figure legend
 
+## Panel S4D
 
-```{r S4D MMEJ balance other guides, fig.height=8, fig.width=8}
-MMEJbal_otherguides_tib = readRDS("/DATA/projects/DSBrepair/data/R/rs20201005_clone5_otherguides_MMEJbalance_chromdomains.RDS")
 
-my_comparisons <- list( c("triple", "euchromatin"), c("other", "euchromatin"), c("other", "triple") )
+```{r FigS4D MMEJ balance other guides, fig.height=8, fig.width=16}
+MMEJbal_otherguides_tib = readRDS("/DATA/projects/DSBrepair/data/R/rs20201005_clone5_otherguides_MMEJbalance_chromdomains.RDS") 
 
-MMEJbal_otherguides_tib %>% filter(drug == "DMSO", !is.na(chrom_grp)) %>% ggviolin(., x = "chrom_grp", y = "MMEJ_MMEJNHEJ",
-color = "chrom_grp", palette = "jco", facet.by = "plasmid", add = "jitter")+
-stat_compare_means(comparisons = my_comparisons)
+MMEJbal_otherguides_tib = MMEJbal_otherguides_tib %>% mutate(LAD_domain == ifelse(is.na(LAD_domain), "iDomain", LAD_domain)) #,
+                                                             # chrom_grp = ifelse(H3K27me3_domain == "Domain" & 
+                                                             #                      H3K9me2_domain == "iDomain" & 
+                                                             #                      LAD_domain  == "iDomain" & 
+                                                             #                      late_replicating_domain == "iDomain", "H3K27me3", chrom_grp))
+
+# my_comparisons <- list( c("triple", "euchromatin"), c("other", "euchromatin"), c("other", "triple"), c("H3K27me3", "triple"), c("other", "H3K27me3"), c("H3K27me3", "euchromatin"))
+# 
+# 
+# 
+# MMEJbal_otherguides_tib %>% filter(drug == "DMSO", !is.na(chrom_grp)) %>% ggviolin(., x = "chrom_grp", y = "MMEJ_MMEJNHEJ",
+# color = "chrom_grp", palette = chrom_colors, facet.by = "plasmid", add = "jitter", order = c("euchromatin", "other",  "H3K27me3", "triple"))+
+# stat_compare_means(comparisons = my_comparisons)
+
+
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
+
+domains = paste0(domain_levels, '_domain')
+
+barcodes_all_plasmids <- MMEJbal_otherguides_tib %>%
+  group_by(barcode) %>%
+  dplyr::summarise(n = n()) %>%
+  filter(n > 2) %>%
+  pull(barcode)
+
+indel.dt = MMEJbal_otherguides_tib %>%
+  filter(barcode %in% barcodes_all_plasmids, plasmid != 'LBR2', drug == "DMSO") %>%
+  dplyr::select(barcode, plasmid, MMEJ_MMEJNHEJ, domains) %>% 
+  spread(plasmid, MMEJ_MMEJNHEJ) %>%
+  distinct(barcode, .keep_all = TRUE) %>%
+  data.table()
+
+
+indel.dt[indel.dt=='iDomain'] <- 0
+indel.dt[indel.dt=='Domain'] <- 1
+
+indel.dt[is.na(LAD_domain), LAD_domain:=0]
+
+indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
+
+colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
+
+opt_df = get_combinations(domain_levels)
+
+### CHRIST ####
+# Can you now plot the ratio MMEJ_MMEJNHEJ of these domains that are significant vs the control condition to see the fold change and significance?
+
+eff.dt = melt(indel.dt, measure.vars=c('LBR1', 'LBR12', 'LBR15'),
+              variable.name='condition', value.name='MMEJ_MMEJNHEJ')
+
+guide_colors <- c("LBR1" = "#c8e3b4", "LBR12" = "#7fccbb", "LBR15" = "#2c7fb9", "LBR2" = "#293990")
+guide_cols <- guide_colors[1:3]
+
+plot_comb_grid_bothplot(eff.dt, opt_df, domain_levels, 'MMEJ_MMEJNHEJ', group_by='condition', color=guide_cols, min_count = 20)
+
+groups <- unique(eff.dt$group)[c(1, 3:13)]
+
+for(i in groups) {
+  pvals <- eff.dt %>% 
+    dplyr::select(condition, MMEJ_MMEJNHEJ, group) %>% 
+    group_by(condition) %>%
+    filter(group %in% c("iDomain", i)) %>%
+    do(broom::tidy(wilcox.test(MMEJ_MMEJNHEJ ~ group, data = .))) %>%
+    ungroup() %>%
+    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
+    dplyr::select(condition, statistic, p.value, p.adj) %>%
+    arrange(p.adj)
+  print(i)
+  print(pvals)
+} 
 ```
+
+
+### Figure legend
 
 
 # Session Info

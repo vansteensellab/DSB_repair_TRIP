@@ -565,6 +565,29 @@ trip_tib_2000 <- trip_tib_2000 %>% distinct(barcode, exp, .keep_all = TRUE)
 trip_tib <- trip_tib_2000 %>%
   filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
 
+M3815_exps = trip_tib_2000 %>%
+    filter(replicate == "M3814_Rep1", ssODN == "ssODN") %>% 
+  distinct(replicate, exp_pool, ssODN) %>% pull(exp_pool)
+trip_tib_c5_m3814 <- trip_tib_2000 %>%
+  filter(exp_pool %in% M3815_exps)
+
+c5_siNT_exp = trip_tib_2000 %>%  
+  filter(siRNA == "siNT", replicate %in% c("clonesiRNARep1", "clonesiRNARep2"), 
+         plasmid == "LBR2") %>% 
+  distinct(replicate, exp_pool) %>% pull(exp_pool)
+
+trip_tib_c5_siNT <- trip_tib_2000 %>%
+  filter(exp_pool %in% c5_siNT_exp)
+
+
+pool_SSTR_exp = trip_tib_2000 %>%  
+    filter(ssODN == "ssODN", cell_line == "RSTP2_2000", 
+           plasmid == "LBR2", replicate != "mean", time == 64) %>% 
+    distinct(replicate, exp_pool) %>% pull(exp_pool)
+
+trip_tib_SSTR <- trip_tib_2000 %>%
+  filter(exp_pool %in% pool_SSTR_exp)
+
 trip_tib_mut <- trip_tib_mut_2000 %>%
   filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
 
@@ -576,22 +599,14 @@ mean_trip_tib_2000$pathway <- factor(mean_trip_tib_2000$pathway, levels=c("other
 mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
 ```
 
-# Main Figure 7
-
-## Panel 7A
+# Clone data
 
 ```{r Fig7A pathways vs contribution ssODN, fig.height=6, fig.width=5}
-trip_tib_pathways <- trip_tib %>%
+trip_tib_pathways <- trip_tib_c5_m3814 %>%
   gather(NHEJ, MMEJ, other_indels, SSTR, key = "pathway", value = 'ratios') %>%
   distinct(barcode, exp, pathway, .keep_all = TRUE)
 
-exp_order <- c("mean_RSTP2_2000_LBR2_DMSO_64",
-              "mean_RSTP2_2000_LBR2_NU7441_64",
-              "mean_RSTP2_2000_LBR2_DMSO_ssODN_64",
-              "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")
-
 trip_tib_pathways$pathway <- factor(trip_tib_pathways$pathway, levels=c("other_indels", "MMEJ", "SSTR", "NHEJ"))
-trip_tib_pathways$exp_pool <- factor(trip_tib_pathways$exp_pool, levels=exp_order)
 trip_tib_pathways <- trip_tib_pathways[!is.na(trip_tib_pathways$ratios), ]
 
 pathway_contribution <- trip_tib_pathways %>% group_by(exp_pool, pathway) %>% dplyr::summarise(pathway_contr = mean(ratios))
@@ -608,33 +623,54 @@ p + scale_fill_manual("legend", values = colores) +
                             "mean_RSTP2_2000_LBR2_NU7441_ssODN_64" = "ssODN + NU7441")) +
   labs(x = element_blank(),
        y = "abundance")
+
+
+
+trip_tib_pathways <- trip_tib_c5_siNT %>%
+  gather(NHEJ, MMEJ, other_indels, SSTR, key = "pathway", value = 'ratios') %>%
+  distinct(barcode, exp, pathway, .keep_all = TRUE)
+
+trip_tib_pathways$pathway <- factor(trip_tib_pathways$pathway, levels=c("other_indels", "MMEJ", "SSTR", "NHEJ"))
+trip_tib_pathways <- trip_tib_pathways[!is.na(trip_tib_pathways$ratios), ]
+
+pathway_contribution <- trip_tib_pathways %>% group_by(exp_pool, pathway) %>% dplyr::summarise(pathway_contr = mean(ratios))
+
+colores <- c("other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
+
+p <- ggplot(pathway_contribution, aes(exp_pool, pathway_contr, fill = pathway, order = pathway)) +
+  geom_bar(stat = "identity", position = "fill")  +
+  theme_bw(base_size = 16)
+p + scale_fill_manual("legend", values = colores) +
+  scale_x_discrete(labels=c("mean_RSTP2_2000_LBR2_DMSO_64" = "DMSO",
+                            "mean_RSTP2_2000_LBR2_NU7441_64" = "ssODN + DMSO",
+                            "mean_RSTP2_2000_LBR2_DMSO_ssODN_64" = "NU7441",
+                            "mean_RSTP2_2000_LBR2_NU7441_ssODN_64" = "ssODN + NU7441")) +
+  labs(x = element_blank(),
+       y = "abundance")
+
+
 ```
 
-### Figure legend
-(A) Average pathway contribution across all IPRs in the cell pools, in the absence or presence of a ssODN donor, and with or without NU7441 treatment (n = 2-8). Red: +1 insertion (NHEJ); blue: -7 deletion (MMEJ); green: +2 insertion due to SSTR; black: other indels.
-
-## Panel 7B
-
-```{r Fig7B pathway contribution per barcode with NU7441, fig.height=8, fig.width=14}
-pathway_distribution <- trip_tib %>%
-  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>%
+```{r efficiency and balance per BC in replicates of M3814 ssODN experiments, fig.height=8, fig.width=14}
+pathway_distribution <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_DMSO_ssODN_72") %>%
   gather(NHEJ, MMEJ, SSTR, other_indels,
          key = "pathway", value = 'ratios') %>%
     distinct(barcode, pathway, ratios) %>%
   group_by(barcode) %>%
   dplyr::mutate(ratios = ratios/sum(ratios))
 
-barcode_order <- trip_tib %>%
-  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>%
+barcode_order <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_DMSO_ssODN_72") %>%
   distinct(efficiency, barcode)  %>%
   arrange(dplyr::desc(efficiency)) %>%
   dplyr::select(barcode)
 
 pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
-pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("other_indels", "MMEJ", "SSTR", "NHEJ"))
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
 
-trip_tib %>%
-  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64") %>%
+p1e <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_DMSO_ssODN_72") %>%
   distinct(efficiency, barcode)  %>%
   arrange(dplyr::desc(efficiency)) %>% ggplot(.,
        aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
@@ -645,8 +681,8 @@ trip_tib %>%
   ylab("TIF") +
   xlab("IPR")
 
-ggplot(pathway_distribution,
-       aes(barcode, ratios, width=.8)) +
+p1b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
   geom_bar(stat = "identity", aes(fill = pathway)) +
   theme_bw(base_size = 16) +
   theme(axis.text.x=element_blank(),
@@ -654,15 +690,423 @@ ggplot(pathway_distribution,
   ylab("Pathway Contribution") +
   xlab("IPR") +
   scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
+
+
+## 1 uM
+pathway_distribution <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_M3814_1uM_ssODN_72") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+p2e <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_M3814_1uM_ssODN_72") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p2b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
+
+## 2 uM
+pathway_distribution <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_M3814_2uM_ssODN_72") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+p3e <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_M3814_2uM_ssODN_72") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p3b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
+
+## 4 uM
+pathway_distribution <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_M3814_4uM_ssODN_72") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+p4e <- trip_tib_c5_m3814 %>%
+  filter(exp_pool == "indel_M3814_Rep1_clone5_LBR2_M3814_4uM_ssODN_72") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p4b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode") + theme(legend.position = "none")
+
+plot_grid(p1e, p2e, p3e, p4e, p1b,p2b,p3b,  p4b, nrow = 2)
 ```
 
-### Figure legend
-(B) Pearson’s correlations of the local intensities of 24 chromatin features versus the relative activity of each pathway (n = 2-3). Correlations with p > 0.001 not shown. Colors as in A.
+```{r efficiency and balance per BC in replicates of siRNA NT ssODN experiments, fig.height=8, fig.width=14}
+# DMSO rep1
+pathway_distribution <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep1_clone5_LBR2_DMSO_siNT_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+barcode_order <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep1_clone5_LBR2_DMSO_siNT_64") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>%
+  dplyr::select(barcode)
+
+pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+p1e <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep1_clone5_LBR2_DMSO_siNT_64") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p1b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
 
 
-## Panel 7C
+## NU7441 rep 1
+pathway_distribution <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep1_clone5_LBR2_NU7441_siNT_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
 
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+
+p2e <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep1_clone5_LBR2_NU7441_siNT_64") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p2b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
+
+## DMSO rep 2
+pathway_distribution <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep2_clone5_LBR2_DMSO_siNT_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+p3e <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep2_clone5_LBR2_DMSO_siNT_64") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p3b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
+
+## NU7441 rep 2
+pathway_distribution <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep2_clone5_LBR2_NU7441_siNT_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+p4e <- trip_tib_c5_siNT %>%
+  filter(exp_pool == "indel_clonesiRNARep2_clone5_LBR2_NU7441_siNT_64") %>%
+  distinct(efficiency, barcode)  %>%
+  arrange(dplyr::desc(efficiency)) %>% ggplot(.,
+       aes(factor(barcode,levels=barcode_order$barcode), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p4b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode") + theme(legend.position = "none")
+
+plot_grid(p1e, p2e, p3e, p4e, p1b,p2b,p3b,  p4b, nrow = 2)
+```
+
+```{r efficiency and balance per BC in replicates of ssODN experiments in the pool, fig.height=8, fig.width=14}
+# DMSO rep1
+
+
+
+pathway_distribution <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep1_LBR2_DMSO_ssODN_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+barcode_order <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep1_LBR2_DMSO_ssODN_64") %>%
+  distinct(SSTR, barcode)  %>%
+  arrange(dplyr::desc(SSTR)) %>%
+  dplyr::select(barcode)
+
+pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+p1e <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep1_LBR2_DMSO_ssODN_64") %>%
+  distinct(efficiency, barcode, SSTR)  %>% 
+  ggplot(.,
+       aes(reorder(barcode, -efficiency), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p1b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")$
+
+
+## NU7441 rep 1
+pathway_distribution <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep1_LBR2_NU7441_ssODN_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+p2e <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep1_LBR2_NU7441_ssODN_64") %>%
+  distinct(efficiency, barcode)  %>% 
+  ggplot(.,
+       aes(reorder(barcode, -efficiency), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p2b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
+
+## DMSO rep 2
+pathway_distribution <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep2_LBR2_DMSO_ssODN_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+
+
+barcode_order <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep2_LBR2_DMSO_ssODN_64") %>%
+  distinct(SSTR, barcode)  %>%
+  arrange(dplyr::desc(SSTR)) %>%
+  dplyr::select(barcode)
+
+pathway_distribution$barcode <- factor(pathway_distribution$barcode, levels=barcode_order$barcode)
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+p3e <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep2_LBR2_DMSO_ssODN_64") %>%
+  distinct(efficiency, barcode)  %>% 
+  ggplot(.,
+       aes(reorder(barcode, -efficiency), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p3b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode")  + theme(legend.position = "none")
+
+## NU7441 rep 2
+pathway_distribution <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep2_LBR2_NU7441_ssODN_64") %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels,
+         key = "pathway", value = 'ratios') %>%
+    distinct(barcode, pathway, ratios) %>%
+  group_by(barcode) %>%
+  dplyr::mutate(ratios = ratios/sum(ratios))
+pathway_distribution$pathway <- factor(pathway_distribution$pathway, levels=c("SSTR", "MMEJ", "other_indels",  "NHEJ"))
+
+p4e <- trip_tib_SSTR %>%
+  filter(exp_pool == "indel_LBR2ssODNRep2_LBR2_NU7441_ssODN_64") %>%
+  distinct(efficiency, barcode)  %>% 
+  ggplot(.,
+       aes(reorder(barcode, -efficiency), efficiency, width=1)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("TIF") +
+  xlab("IPR")
+
+p4b <- ggplot(pathway_distribution,
+       aes(barcode, ratios, width=1)) +
+  geom_bar(stat = "identity", aes(fill = pathway)) +
+  theme_bw(base_size = 16) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Pathway Contribution") +
+  xlab("IPR") +
+  scale_fill_manual("legend", values = colores) +
+  ggtitle("Pathway contribution per barcode") + theme(legend.position = "none")
+
+plot_grid(p1e, p2e, p3e, p4e, p1b,p2b,p3b,  p4b, nrow = 2)
+
+
+ggplot(trip_tib_SSTR,
+       aes(replicate, SSTR, color = replicate)) +
+  geom_quasirandom() +
+  theme_bw(base_size = 16) +
+  facet_grid(. ~ drug)
+```
+
+# Pool data
+Let's see how the blance of the other pathways change if we split the data on high and low SSTR in seperate replicates. 
 ```{r Fig7C SSTR ratio per heterochomatin domain, fig.height=6, fig.width=10}
 tib.dt = data.table(trip_tib)
 
@@ -822,35 +1266,6 @@ for(i in groups) {
 ### Figure legend
 (D) Same as in C, but showing the MMEJ:SSTR balance. See also Figure S8J.
 
-```{r Fig7F end point pathway proportion, fig.height=6, fig.width=10}
-endpoint = readRDS("/DATA/projects/DSBrepair/data/R/cl20201124_end_ratio.RDS")
-endpointSSTR = readRDS("/DATA/projects/DSBrepair/data/R/cl20201124_SSTR_end_ratio.RDS")
-
-colores <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
-
-ggplot(endpointSSTR,
-       aes(barcode, proportion, width=1)) +
-  geom_bar(stat = "identity", aes(fill = indel_type)) +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("Pathway Contribution") +
-  xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
-
-ggplot(endpoint,
-       aes(barcode, proportion, width=1)) +
-  geom_bar(stat = "identity", aes(fill = indel_type)) +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("Pathway Contribution") +
-  xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
-```
-
 
 # Supplementary Figure 7
 ## Panel S7A
@@ -950,6 +1365,21 @@ ggplot(trip_lbr2_ssODN_efficiency, aes(`-`, ssODN, color = drug)) +
   stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top") +
   theme(legend.position = c(0.8, 0.2)) +
   scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
+
+trip_lbr2_ssODN_efficiency <- trip_tib %>% dplyr::select(barcode, ssODN, SSTR, late_replicating, drug) %>% spread(drug, SSTR)
+
+ggplot(trip_lbr2_ssODN_efficiency, aes(DMSO, NU7441, color = ssODN)) +
+  geom_point() +
+  theme_bw(base_size = 16) +
+  geom_abline(slope = 1)  +
+  geom_smooth(method = glm) +
+  xlim(0,1) + ylim(0,1)  +
+  labs(title = "SSTR in DMSO / NU7441 condition",
+       x = "SSTR DMSO",
+       y = "SSTR NU7441") +
+  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_color_manual(values = c("-" = "black", "ssODN" = "gray"))
 ```
 
 

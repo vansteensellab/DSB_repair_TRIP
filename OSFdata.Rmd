@@ -17,9 +17,10 @@ When you click the **Knit** button a document will be generated that includes bo
 
 ```{r load data}
 # INPUT DIRECTORY
-in.dir.date = 20200410
+in.dir.date = 20201029
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
-load(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RData"))
+
+trip_tib_2000 = readRDS(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RDS"))
 load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
 clone5_domains <- readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS")
 
@@ -30,16 +31,16 @@ clone5_domains <- readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_cl
 You can also embed plots, for example:
 
 ```{r select experiments}
-filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
-filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_64", "mean_RSTP2_2000_LBR2_NU7441_64"))
-  filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_64",
-                          "mean_RSTP2_2000_LBR2_BIX01294_64",
-                          "mean_RSTP2_2000_LBR2_DMSOGSK_64",
-                          "mean_RSTP2_2000_LBR2_GSK126_64"))
-    filter(exp_pool %in% c("mean_RSTP2_2000_LBR1_DMSO_64",
-                         "mean_RSTP2_2000_LBR2_DMSO_64",
-                         "mean_RSTP2_2000_LBR12_DMSO_64",
-                         "mean_RSTP2_2000_LBR15_DMSO_64"))
+# filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_NU7441_64", "mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64"))
+# filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64", "mean_RSTP2_2000_LBR2_64", "mean_RSTP2_2000_LBR2_NU7441_64"))
+#   filter(exp_pool  %in% c("mean_RSTP2_2000_LBR2_64",
+#                           "mean_RSTP2_2000_LBR2_BIX01294_64",
+#                           "mean_RSTP2_2000_LBR2_DMSOGSK_64",
+#                           "mean_RSTP2_2000_LBR2_GSK126_64"))
+#     filter(exp_pool %in% c("mean_RSTP2_2000_LBR1_DMSO_64",
+#                          "mean_RSTP2_2000_LBR2_DMSO_64",
+#                          "mean_RSTP2_2000_LBR12_DMSO_64",
+#                          "mean_RSTP2_2000_LBR15_DMSO_64"))
     
 trip_tib_2000 %>% filter(plasmid == "LBR2", 
                          drug == "KOCTRL1",
@@ -66,6 +67,19 @@ TRIP_data <- trip_tib_2000 %>% distinct(exp_pool, barcode, .keep_all = TRUE) %>%
     "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR15_DMSO_64", 
     "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR15_DMSO_64",
     "mean_RSTP2_2000_LBR15_DMSO_64",
+    # M3814
+    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR1_M3814_64", 
+    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR12_M3814_64",
+    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR15_M3814_64", 
+    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR1_M3814_64", 
+    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR12_M3814_64",
+    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR15_M3814_64",
+    "indel_LBR2M3814Rep1_RSTP2_2000_LBR2_M3814_64",      
+    "indel_LBR2M3814Rep2_RSTP2_2000_LBR2_M3814_64",      
+    "mean_RSTP2_2000_LBR1_M3814_64",                   
+    "mean_RSTP2_2000_LBR12_M3814_64",                    
+    "mean_RSTP2_2000_LBR15_M3814_64",                 
+    "mean_RSTP2_2000_LBR2_M3814_64",
     # LBR2 DMSO
     "indel_LBR2NU7441Rep1_LBR2_DMSO_64",
     "indel_LBR2GSKBIXRep1_LBR2_DMSO_64",
@@ -109,6 +123,22 @@ TRIP_data <- trip_tib_2000 %>% distinct(exp_pool, barcode, .keep_all = TRUE) %>%
     "indel_clonesiRNARep2_clone5_LBR2_NU7441_siCtIP_64",
     "mean_RSTP2_clone5_LBR2_DMSO_siCtIP_64",
     "mean_RSTP2_clone5_LBR2_NU7441_siCtIP_64" ,
+    # LBR 2 siRNA HR exps
+    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siNT_72",     
+    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siPolQ_72",  
+    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siRad51_72", 
+    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siBRCA1_72", 
+    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siBRCA2_72", 
+    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siNT_72",   
+    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siPolQ_72",  
+    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siRad51_72", 
+    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siBRCA1_72", 
+    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siBRCA2_72", 
+    "mean_RSTP2_clone5_LBR2_Shield_siNT_72",                    
+    "mean_RSTP2_clone5_LBR2_Shield_siPolQ_72",           
+    "mean_RSTP2_clone5_LBR2_Shield_siRad51_72",                  
+    "mean_RSTP2_clone5_LBR2_Shield_siBRCA1_72",              
+    "mean_RSTP2_clone5_LBR2_Shield_siBRCA2_72",  
     # BIX
     "indel_LBR2GSKBIXRep1_LBR2_BIX0129_64",
     "indel_LBR2GSKBIXRep2_LBR2_BIX0129_64",
@@ -117,7 +147,7 @@ TRIP_data <- trip_tib_2000 %>% distinct(exp_pool, barcode, .keep_all = TRUE) %>%
     "indel_LBR2GSKBIXRep1_LBR2_GSK126_64",
     "indel_LBR2GSKBIXRep2_LBR2_GSK126_64",
     "mean_RSTP2_2000_LBR2_GSK126_64",
-    # GSK DMSO
+    # GSK DMSO (the individual experiments are already under the section LBR2 DMSO)
     "mean_RSTP2_2000_LBR2_DMSOGSK_64",
     # LMNA & LBR KO
     "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_1_64",
@@ -167,11 +197,78 @@ TRIP_data <- trip_tib_2000 %>% distinct(exp_pool, barcode, .keep_all = TRUE) %>%
   ))  %>% mutate(MMEJ_MMEJSSTR = 1 - SSTR_MMEJSSTR, 
                  wild_type = 1 - efficiency) %>% 
   left_join(chr.sites.TRIP, by = "barcode") %>%
-  dplyr::select(seqname, start, ori, barcode, exp_pool, wild_type, NHEJ, MMEJ, SSTR, MMEJ_MMEJNHEJ, MMEJ_MMEJSSTR)
+  dplyr::select(seqname, start, ori, barcode, exp_pool, replicate, plasmid, time, drug, ssODN, siRNA, cell_line, pool, wild_type, NHEJ, MMEJ, SSTR, MMEJ_MMEJNHEJ, MMEJ_MMEJSSTR)
 
 write.table(TRIP_data, file="/DATA/projects/DSBrepair/data/R/TRIP_data_DSB_repair_manuscript.tsv", quote=FALSE, sep='\t')
 
 ```
+
+
+```{r Biosample Sheet SRA}
+biosample_start = TRIP_data %>% filter(replicate == "mean") %>%  as_tibble() %>% # filter for experiments with a mean, the singlets were not used in the study
+  distinct(exp_pool, cell_line, plasmid, time, drug, ssODN, siRNA)  # select the relevant columns and remove duplicates
+
+# make a biosample list with pool A samples (because in the analysis we combine both), here we need to split them again
+poolA = biosample_start %>% as_tibble() %>%
+  filter(cell_line == "RSTP2_2000") %>% # take out the clonal experiments
+  distinct(exp_pool, cell_line, plasmid, time, drug, ssODN, siRNA) %>% # select the relevant columns and remove duplicates
+  mutate(cell_line = paste0(cell_line, "_A"), # add A to the cell_line
+         exp_pool = gsub("2000_", "2000_A_", exp_pool)) #add A to the exp_pool
+
+
+# Make biosample data for the timeseries
+meta.dt = fread('/DATA/projects/DSBrepair/config/cl20190816_metadata_timeseries_LBR2.tsv',
+                stringsAsFactors=F, key='ID', colClasses=c('clone'='character'))
+meta.dt[, clone:= 'RSTP2_5']
+
+timeseries_samples = meta.dt %>% as_tibble() %>%
+  filter(PCR_type == "indelPCR",
+         time < 73,
+         series %in% c('TimeSeries2_a', 'TimeSeries2-3_b', 
+                     'TimeSeries3_a', 'TimeSeries4_a'),
+         plasmid == "LBR2", 
+         grepl("_5_LBR", ID)) %>% 
+  mutate(ssODN = ifelse(series%in%c('TimeSeries3_a', 'TimeSeries4_a'), "ssODN", "-"),
+         drug = ifelse(series%in%c('TimeSeries3_a', 'TimeSeries4_a'), "NU7441", "DMSO"),
+         siRNA = "-",
+         ID = gsub("(TimeSeries).*(_LBR2).*$", "RSTP2_clone5_\\1\\2", ID), 
+         drug = ifelse(ssODN == "ssODN", "NU7441", "DMSO")) %>%
+  mutate(exp_pool = paste(ID, ssODN, drug, time, sep = "_"),
+         cell_line = "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5") %>%
+  distinct(exp_pool, cell_line, drug, plasmid, time, drug, ssODN, siRNA)
+
+
+
+BioSamples = biosample_start %>% as_tibble() %>%
+  distinct(exp_pool, cell_line, plasmid, time, drug, ssODN, siRNA) %>% # select the relevant columns and remove duplicates
+  mutate(cell_line = gsub("2000", "2000_B", cell_line), # add B to the cell line (split the 2000 in A and B)
+         exp_pool = gsub("2000_", "2000_B_", exp_pool)) %>% # add B to the exp_pool line
+  rbind(., poolA, timeseries_samples) %>% # Add poolA samples so we have all the biosamples
+  # add some of the default columns of the biosample sheet
+  mutate(organism = "Homo sapiens",
+         isolate = "patient with chronic myelogenous leukemia (CML)",
+         age = "53",
+         biomaterial_provider = "Bas van Steensel, Division of Gene Regulation, Netherlands Cancer Institute",
+         sex = "female",
+         tissue = "bone marrow",
+         cell_line = ifelse(cell_line == "RSTP2_2000_A", "K562#17 ddCas9 DSB-TRIP (RSTP2) pool A", 
+                            ifelse(cell_line == "RSTP2_2000_B", "K562#17 ddCas9 DSB-TRIP (RSTP2) pool B", 
+                                   "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5")),
+         exp_pool = gsub("mean_", "", exp_pool),
+         plasmid = ifelse(plasmid == "LBR2", "sgRNA LBR2", 
+                          ifelse(plasmid == "LBR1", "sgRNA LBR1", 
+                                 ifelse(plasmid == "LBR12", "sgRNA LBR12", 
+                                        ifelse(plasmid == "LBR15", "sgRNA LBR15", plasmid)))),
+         sample_type = "cell culture") %>%
+  dplyr::rename(sample_name = exp_pool) %>%
+  dplyr::select(sample_name, organism, isolate, age, 
+                biomaterial_provider, sex, tissue, cell_line, sample_type, 
+                plasmid, time, drug, ssODN, siRNA)
+
+write.table(BioSamples, file="/DATA/projects/DSBrepair/data/R/rs20201115_BioSamples_manuscript.tsv", quote=FALSE, sep='\t', row.names = F)
+
+```
+
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
