@@ -49,12 +49,13 @@ library(data.table)
 library(dplyr)
 library(yaml)
 library(stringr)
+library(report)
 
 ## Select outdir
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20201029
+in.dir.date = 20201129
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 dir.create(out.dir, showWarnings = FALSE)
@@ -245,6 +246,12 @@ saveRDS(trip_tib_2000, file = paste0(out.dir, "RSTP2_IndelRatios_Chromatin_2kb.R
 # save(trip_tib_mut_1000, file = paste0(out.dir, "RSTP2_Indel_Chromatin_1kb.RData"))
 saveRDS(trip_tib_mut_2000, file = paste0(out.dir, "RSTP2_Indel_Chromatin_2kb.RDS"))
 ```
+
+# Bibliography
+```{r citations}
+cite_packages()
+```
+
 
 # Session Info
 ```{r}

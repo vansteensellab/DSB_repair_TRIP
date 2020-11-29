@@ -92,8 +92,7 @@ library(GenomicRanges)
 library(RColorBrewer)
 library(ggplot2)
 library(tidyverse)
-
-# library(magrittr)
+library(report)
 
 ## Select outdir
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
@@ -520,6 +519,10 @@ max(indel.statistics.filtered.tib$discarded_reads)
 indel.statistics.filtered.tib %>% filter(discarded_reads > .3)
 ```
 
+# Bibliography
+```{r citations}
+cite_packages()
+```
 
 
 # Session Info  

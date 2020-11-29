@@ -77,7 +77,7 @@ library(plyr)
 library(dplyr)
 library(data.table)
 library(ggplot2)
-# library(car)
+library(report)
 library(parallel)
 library(gtools)
 library(tibble)
@@ -86,7 +86,7 @@ library(tibble)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20201029
+in.dir.date = 20201129
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 ``` 
 
@@ -616,21 +616,21 @@ columnstokeep <- names(all.mutations.dt)[!names(all.mutations.dt) %in% c("count"
 mutations.large.del.dt = all.mutations.dt[mutation %in% largedels, ]
 mutations.large.del.dt = mutations.large.del.dt[, lapply(.SD, sum, na.rm=TRUE), by=c(columnstokeep),
                                                 .SDcols=c("count", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq","norm", "sd_norm")]
-mutations.large.del.dt[, mutation:="<-15"]
+mutations.large.del.dt[, mutation:="<-14"]
 
 # Fix large insertions for every insertions above 3
 largeins <- as.character(seq(3, 20))
 mutations.large.ins.dt = all.mutations.dt[mutation %in% largeins, ]
 mutations.large.ins.dt = mutations.large.ins.dt[, lapply(.SD, sum, na.rm=TRUE), by=c(columnstokeep),
                                                 .SDcols=c("count", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq","norm", "sd_norm")]
-mutations.large.ins.dt[, mutation:=">3"]
+mutations.large.ins.dt[, mutation:=">2"]
 
 mutations.large.del.dt
 mutations.large.ins.dt
 
 large.indels.dt = rbind(mutations.large.del.dt, mutations.large.ins.dt)
 
-large.indels.dt[mutation %in% c(">3", "<-15"), color := "other"]
+large.indels.dt[mutation %in% c(">2", "<-14"), color := "other"]
 
 setcolorder(large.indels.dt,c("exp", "exp_pool", "barcode", "nexp", "no",
                               "replicate", "cell_line", "pool", "plasmid", "time", "drug",
@@ -657,7 +657,7 @@ indels.odn <- c(as.character(seq(min_indel, max_indel)), "ssODN")
 muts <- unique(all.mutations.trunc.dt$mutation)
 min_indel <- min(as.numeric(muts[-grep("ssODN|<|>", muts)]))
 max_indel <- max(as.numeric(muts[-grep("ssODN|<|>", muts)]))
-indels.trunc.odn <- c("<-15", as.character(seq(min_indel, max_indel)), ">3", "ssODN")
+indels.trunc.odn <- c("<-14", as.character(seq(min_indel, max_indel)), ">2", "ssODN")
 
 # head(trip_tib_mut_2000)
 all.mutations.trunc.dt$mutation <- factor(all.mutations.trunc.dt$mutation, levels=indels.trunc.odn)
@@ -782,6 +782,14 @@ saveRDS(tib_RSTP2_2000_mutations, file = filename)
 ```
 # Conclusions
 I"m happy with the output I"ve generated. I should still work on checking what the best amount of reads is that I need for correct correlations etc.
+
+
+# Bibliography
+```{r citations}
+cite_packages()
+```
+
+
 # Session Info
 ```{r session_info}
 sessionInfo()

@@ -1,5 +1,5 @@
 ---
-title: "Figure 3 and supplemental 3-4"
+title: "Figure 3 and supplementary figure 3"
 author: "Ruben Schep"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
 output:
@@ -38,7 +38,7 @@ pdf.options(useDingbats = FALSE)
 
 
 # INPUT DIRECTORY
-in.dir.date = 20201029
+in.dir.date = 20201129
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 
@@ -75,14 +75,6 @@ measure_color = c(None='grey', high='#A6C57B', low='#BD6F46')
 ## Custom functions
 Functions used thoughout this script.
 ```{r custom functions, message=FALSE, warnings=FALSE}
-SetFileName <- function(filename, initials) {
-  # Set filename with extension and initials to make filename with date integrated.
-  filename <- substitute(filename)
-  initials <- substitute(initials)
-  filename <- paste0(initials, substr(gsub("-","",Sys.time()),1,8), "_", filename)
-  filename
-}
-
 CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
   hist.corr.list <- data[data$exp_pool==condition_name, ] %>%
     dplyr::select(feature_name, targets) %>%
@@ -95,22 +87,6 @@ CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.val
   
   return(histone.corr.df=histone.corr.df)
 }
-
-
-clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2',
-                                    'H3K27me3', 'EZH2', 'CTCF', 'SMC3',
-                                    'HDAC3', 'HDAC2', 'HDAC1', 'H3K4me1',
-                                    'H3K4me2', 'H3K4me3', 'H3K27ac',
-                                    'H4K5acK8ac', 'H2AFZ', 'DNAse', 'Dam',
-                                    'm5C', 'H3K79me2', 'TTseq', 'H3K36me3',
-                                    'POL2AS2', 'POL2'),
-                        group=factor(c(rep('repressive', 5), rep('insulator', 2),
-                                       rep('HDAC', 3), rep('euchromatin', 6),
-                                       rep('accessibility', 2), 'methylation',
-                                       rep('transcribing', 5)),
-                                     levels=c('transcribing', 'accessibility',
-                                              'methylation', 'euchromatin',
-                                              'HDAC', 'insulator', 'repressive')))
 
 CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
   cor.df = data.frame()
@@ -580,10 +556,10 @@ trip_tib_2000 = readRDS(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RDS"))
 
 
 # Import ChIP2 & ChIP3 experiments
-ChIP_clone5 <- readRDS("/DATA/projects/DSBrepair/data/R/xv20200402_chipampcorrelation.rds")
+ChIP_clone5 <- readRDS("/DATA/projects/DSBrepair/data/R/xv20201125_chipampcorrelation.rds") 
 
 # Select the final tib from xabi (contains log2 means) and add .B to the barcodes
-selected.chip.tib <- ChIP_clone5$final.tib %>% ungroup() %>% mutate(barcode = paste0(barcode, ".B")) %>% group_by(barcode)
+selected.chip.tib <- ChIP_clone5$final.tib %>% ungroup() %>% mutate(barcode = paste0(barcode, ".B")) %>% group_by(barcode) 
 ```
 
 
@@ -611,18 +587,6 @@ mean_trip_tib_2000 <- trip_tib_2000 %>%
 
 mean_trip_tib_2000$pathway <- factor(mean_trip_tib_2000$pathway, levels=c("other_indels", "MMEJ", "NHEJ"))
 mean_trip_tib_2000 <- mean_trip_tib_2000[!is.na(mean_trip_tib_2000$ratios), ]
-
-trip_tib$spin_state <- factor(trip_tib$spin_state, levels=c("Speckle",
-                                                            "Interior_Act1",
-                                                            "Interior_Act2",
-                                                            "Interior_Act3",
-                                                            "Interior_Repr1",
-                                                            "Interior_Repr2",
-                                                            "Near_Lm1",
-                                                            "Near_Lm2",
-                                                            "Near_Lm3",
-                                                            "Lamina",
-                                                            NA ))
 ```
 
 # Main Figure
@@ -830,36 +794,55 @@ ggplot(filter(trip_tib_mut, mutation != "ssODN", nexp > 1),
 
 ## Panel S3B
 ```{r FigS3B correlation TIF all guides, fig.height=5, fig.width=5}
-res = trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% 
-  spread(plasmid, efficiency) %>% 
-  column_to_rownames(., var = "barcode") %>%
-  as.matrix() %>%
-  rcorr(., type="spearman")
+p4 <- trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR1, LBR12)) +  
+  geom_point() +
+  geom_smooth(method= "loess") +
+  ylim(0, 1) +
+  xlim(0, 1) +
+  theme_bw(base_size = 16) +
+  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = 0.1) + 
+  coord_fixed()
 
-library(corrplot)
-corrplot(res$r, type = "upper", order = "hclust", 
-         tl.col = "black", tl.srt = 45, diag = FALSE)
+p5 <- trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR15, LBR12)) +  
+  geom_point() +
+  geom_smooth(method= "loess") +
+  ylim(0, 1) +
+  xlim(0, 1) +
+  theme_bw(base_size = 16) +
+  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = 0.1) + 
+  coord_fixed()
+
+p6 <- trip_tib %>% dplyr::select(barcode, plasmid, efficiency) %>% spread(plasmid, efficiency) %>% ggplot(., aes(LBR1, LBR15)) +  
+  geom_point() +
+  geom_smooth(method= "loess") +
+  ylim(0, 1) +
+  xlim(0, 1) +
+  theme_bw(base_size = 16) +
+  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = 0.1) + 
+  coord_fixed()
+
+plot_grid(p4, p5, p6, nrow = 2)
 ```
 
 ### Figure Legend
 
 ## Panel S3C
 ```{r FigS3C chip clone 5, fig.height=4, fig.width=12}
-Chip.seq.data.melt <- trip_tib_2000 %>% filter(cell_line == "RSTP2_clone5")  %>% distinct(barcode, .keep_all = TRUE) %>% dplyr::select(barcode, H3K27me3, H3K4me1, H3K27ac) %>% gather(H3K27me3, H3K4me1, H3K27ac, key = antibody, value = value)
+Chip.seq.data.melt <- trip_tib_2000 %>% 
+  filter(cell_line == "RSTP2_clone5")  %>% 
+  distinct(barcode, .keep_all = TRUE) %>% 
+  dplyr::select(barcode, H3K27me3, H3K4me1, H3K27ac) %>%
+  gather(H3K27me3, H3K4me1, H3K27ac, key = antibody, value = value) %>% left_join(., selected.chip.tib)
 
-clone5_domains <- readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS")
-
-
-signal.amp.seq <- left_join(selected.chip.tib,Chip.seq.data.melt, by = c("barcode", "antibody")) %>% left_join(clone5_domains, by = "barcode")
 
 #Plot with free axis scales
-ggplot(signal.amp.seq, aes(value,amp.seq)) + 
-  geom_point() + 
+ggplot(Chip.seq.data.melt, aes(amp.seq, ChIPseq.mean.2kb)) + 
+  geom_point(size = 2) + 
   geom_smooth(method = "lm") + 
   facet_wrap(~ antibody, scales= "free") + 
   ylab("log2(normalized barcode reads)") + 
   xlab("log2(ChIP-seq signal)") + 
-  stat_cor(method = "pearson", label.x.npc = 0, label.y.npc = 1, vjust = 0) +
+  stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top") +
   theme_bw(base_size = 16)
 
 ```
@@ -867,37 +850,6 @@ ggplot(signal.amp.seq, aes(value,amp.seq)) +
 ### Figure Legend
 *(A)* Pearson's correlation between log2 normalized IPR PCR reads on ChIP of clone5 versus log2 ChIP-seq signal over 2kb surrounding the IPR location from published data. References in table S1.
 
-<!-- ## Supplementary Figure 4 -->
-
-<!-- ## Panel S3A -->
-<!-- ```{r FigS3A heterochrom domains efficiency supp, fig.height=8, fig.width=16} -->
-<!-- indel.dt = trip_tib %>% -->
-<!--   dplyr::select(barcode, plasmid, efficiency, domains) %>% -->
-<!--   filter(barcode %in% barcodes_all_plasmids) %>% -->
-<!--   spread(plasmid, efficiency) %>% -->
-<!--   distinct(barcode, .keep_all = TRUE) %>% -->
-<!--   data.table() -->
-
-
-<!-- indel.dt[indel.dt=='iDomain'] <- 0 -->
-<!-- indel.dt[indel.dt=='Domain'] <- 1 -->
-
-<!-- indel.dt[is.na(LAD_domain), LAD_domain:=0] -->
-
-<!-- indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains] -->
-
-<!-- colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt)) -->
-
-<!-- opt_df = get_combinations(domain_levels) -->
-
-<!-- eff.dt = melt(indel.dt, measure.vars=c('LBR1', 'LBR12', 'LBR15', 'LBR2'), -->
-<!--               variable.name='condition', value.name='efficiency') -->
-
-<!-- plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'efficiency', group_by='condition', color=guide_colors) -->
-
-<!-- ``` -->
-
-<!-- ### Figure Legend -->
 
 # Bibliography
 ```{r citations}

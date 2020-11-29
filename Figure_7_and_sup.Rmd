@@ -42,74 +42,40 @@ in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 # libraries:
 library(ggplot2)
 library(ggpubr)
-# library(reshape2)
-library(tibble)
-# library(GenomicRanges)
-# library(rtracklayer)
 library(corrr)
 library(Hmisc)
 library(ggbeeswarm)
-library(RColorBrewer)
-library(data.table)
 library(dplyr)
-# library(plyr)
 library(tidyr)
-# library(stringr)
-# library(plotly)
+library(tibble)
 library(ggpmisc)
-library(glmnet)
 library(cowplot)
-library(mda)
-library(earth)
-library(yaml)
-library(vip)
-library(caret)
-library(scales)
-library(glmnet)
-library(gridExtra)
-library(ggcorrplot)
-library(bnlearn)
-library(pheatmap)
-library(ppcor)
-library(parallel)
+library(data.table)
+library(report)
 
-color_redblue <- rev(brewer.pal(11,"RdBu"))
-duocolor <- c("#EE756E", "#2BB6BE")
+# library(ggpmisc)
+# library(glmnet)
+# library(cowplot)
+# library(mda)
+# library(earth)
+# library(yaml)
+# library(vip)
+# library(caret)
+# library(scales)
+# library(glmnet)
+# library(gridExtra)
+# library(ggcorrplot)
+# library(bnlearn)
+# library(pheatmap)
+# library(ppcor)
+# library(parallel)
+
+
+# Color codes used in this script
 colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
 colores <- c("wt" = "#808184", "other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
-colori  <- c("other_indels" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "ssODN" = "#007A4C")
-colora <- c("0" = "#808184", "1" = "#E1251B", "-7" = "#223DA0", "-14" = "#223DA0")
-coloru <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "MMEJplusNHEJplusHDR" = "#EE8A2A", "HDR" = "#007A4C", "MMEJplusHDR" = "#EE8A2A")
 colory <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "SSTR" = "#007A4C")
-
 measure_color = c(NHEJ='#e1251b', MMEJ='#26419a', SSTR='#007A4C', None='grey')
-
-method_color = c(MARS='#00bfc4', LASSO='#f8766d')
-lad_color <- c(LAD="#802cdc", iLAD="#dfaf2f")
-sign_color <- c(down="#AA6375", up="#7B9A36")
-
-feature_fill = c(insulator="#a6b5a3", repressive="#304441", euchromatin="#cda4cc",
-                 transcribing="#ED9114", HDAC="#aac9e0", accessibility='#cebc85',
-                 methylation='#7dc98f')
-
-feature_color = c(insulator="black", repressive="white", euchromatin="black",
-                  transcribing="black", HDAC="black", accessibility='black',
-                  methylation='black')
-
-clustering = data.frame(row.names=c('LMNB1', 'late_replicating', 'H3K9me2','H3K27me3', 'EZH2', 'CTCF', 'SMC3',
-							        'HDAC3', 'HDAC2', 'HDAC1', 'H3K4me1',
-								    'H3K4me2', 'H3K4me3', 'H3K27ac',
-								    'H4K5acK8ac', 'H2AFZ', 'DNAse', 'Dam', 'm5C',
-								    'H3K79me2', 'TTseq', 'H3K36me3', 'POL2AS2',
-								    'POL2'),
-					   group=factor(c(rep('repressive', 5), rep('insulator', 2),
-				                      rep('HDAC', 3), rep('euchromatin', 6),
-                                      rep('accessibility', 2), 'methylation',
-						              rep('transcribing', 5)),
-									levels=c('transcribing', 'accessibility',
-                                             'methylation', 'euchromatin',
-								             'HDAC', 'insulator', 'repressive')))
-
 ```
 
 ## Custom functions
@@ -670,73 +636,11 @@ domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
 
 domains = paste0(domain_levels, '_domain')
 
-# indel.dt = unique(tib.dt[exp_pool == "mean_RSTP2_2000_LBR2_NU7441_ssODN_64",  
-#                          c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR', 'NHEJ', 'MMEJ', 'efficiency', 'SSTR_freq', 'MMEJ_freq','NHEJ_freq',
-#                            domains), with=F])
-# 
-# indel.dt = indel.dt %>% mutate(NHEJ_eff = NHEJ/efficiency, MMEJ_eff = MMEJ/efficiency, SSTR_eff = SSTR/efficiency)
-# 
-# indel.dt[indel.dt=='iDomain'] <- 0
-# indel.dt[indel.dt=='Domain'] <- 1
-# 
-# indel.dt[is.na(LAD_domain), LAD_domain:=0]
-# 
-# indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
-# 
-# colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
-# 
-# opt_df = get_combinations(domain_levels)
+indel.dt = unique(tib.dt[exp_pool == "mean_RSTP2_2000_LBR2_DMSO_ssODN_64",  
+                         c('exp_pool', 'barcode', 'SSTR', 'SSTR_MMEJSSTR', 'NHEJ', 'MMEJ', 'efficiency', 'SSTR_freq', 'MMEJ_freq','NHEJ_freq',
+                           domains), with=F])
 
-
-# Ratio of SSTR vs all indels
-
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'efficiency', min_count = 25, y_plabel=c(0, 1.1))
-
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'SSTR', min_count = 25, y_plabel=c(0.5, 0.7))
-
-# plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR', group_by='condition', min_count = 25, color=c("DMSO" = "black", "NU7441" = "gray"))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'SSTR_freq', min_count = 25, y_plabel=c(0.5, 0.7))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'SSTR_eff', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'MMEJ', min_count = 25, y_plabel=c(0, 0.6))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'MMEJ_freq', min_count = 25, y_plabel=c(0, 0.6))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'MMEJ_eff', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-#                    domain_levels, 'NHEJ', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_NU7441_ssODN_64'], opt_df,
-#                    domain_levels, 'NHEJ_freq', min_count = 25, y_plabel=c(0, 1))
-# 
-# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
-                   # domain_levels, 'NHEJ_eff', min_count = 25, y_plabel=c(0, 1))
-
-
-barcodes_all_drugs <- trip_tib_2000 %>%
-  filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_ssODN_64", "mean_RSTP2_2000_LBR2_NU7441_ssODN_64")) %>% 
-  group_by(barcode) %>%
-  dplyr::summarise(n = n()) %>%
-  filter(n == 2) %>%
-  pull(barcode)
-
-indel.dt = trip_tib %>% filter(ssODN == "ssODN") %>%
-  dplyr::select(barcode, drug, SSTR, domains) %>%
-  filter(barcode %in% barcodes_all_drugs) %>%
-  spread(drug, SSTR) %>%
-  distinct(barcode, .keep_all = TRUE) %>%
-  data.table()
-
+indel.dt = indel.dt %>% mutate(NHEJ_eff = NHEJ/efficiency, MMEJ_eff = MMEJ/efficiency, SSTR_eff = SSTR/efficiency)
 
 indel.dt[indel.dt=='iDomain'] <- 0
 indel.dt[indel.dt=='Domain'] <- 1
@@ -749,27 +653,38 @@ colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
 
 opt_df = get_combinations(domain_levels)
 
-eff.dt = melt(indel.dt, measure.vars=c('DMSO', 'NU7441'),
-              variable.name='condition', value.name='SSTR')
 
-plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR', group_by='condition', min_count = 25, color=c("DMSO" = "#007B4D", "NU7441" = "#83A88B"))
+# Ratio of SSTR vs all indels
 
-groups <- unique(eff.dt$group)[c(2:13)]
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'efficiency', min_count = 25, y_plabel=c(0, 1.1))
 
-for(i in groups) {
-  pvals <- eff.dt %>% 
-    dplyr::select(condition, SSTR, group) %>% 
-    group_by(condition) %>%
-    filter(group %in% c("iDomain", i)) %>%
-    do(broom::tidy(wilcox.test(SSTR ~ group, data = .))) %>%
-    ungroup() %>%
-    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
-    dplyr::select(condition, statistic, p.value, p.adj) %>%
-    arrange(p.adj)
-  print(i)
-  print(pvals)
-} 
-
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'SSTR', min_count = 20, y_plabel=c(0.20, 0.26))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'SSTR_freq', min_count = 25, y_plabel=c(0, 0.5))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'SSTR_eff', min_count = 25, y_plabel=c(0, 1))
+# 
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'MMEJ', min_count = 20, y_plabel=c(.3, 0.4))
+# 4
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ_freq', min_count = 25, y_plabel=c(0, 0.6))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'MMEJ_eff', min_count = 25, y_plabel=c(0, 1))
+# 
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'NHEJ', min_count = 20, y_plabel=c(.8, .9))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+#                    domain_levels, 'NHEJ_freq', min_count = 25, y_plabel=c(0, 1))
+# 
+# plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   # domain_levels, 'NHEJ_eff', min_count = 25, y_plabel=c(0, 1))
 
 ```
 
@@ -781,74 +696,22 @@ for(i in groups) {
 
 ## Panel 7D
 
-```{r Fig7D SSTR_MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
-indel.dt = trip_tib %>% filter(ssODN == "ssODN") %>%
-  dplyr::select(barcode, drug, SSTR_MMEJSSTR, domains) %>%
-  filter(barcode %in% barcodes_all_drugs) %>%
-  mutate(SSTR_MMEJSSTR = 1-SSTR_MMEJSSTR) %>%
-  spread(drug, SSTR_MMEJSSTR) %>%
-  distinct(barcode, .keep_all = TRUE) %>%
-  data.table()
+```{r Fig7D MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
 
-indel.dt[indel.dt=='iDomain'] <- 0
-indel.dt[indel.dt=='Domain'] <- 1
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'MMEJ', min_count = 20, y_plabel=c(.3, 0.4))
 
-indel.dt[is.na(LAD_domain), LAD_domain:=0]
-
-indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
-
-colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
-
-eff.dt = melt(indel.dt, measure.vars=c('DMSO', 'NU7441'),
-              variable.name='condition', value.name='SSTR_MMEJSSTR')
-
-plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR_MMEJSSTR', group_by='condition', min_count = 25, color=c("DMSO" = "black", "NU7441" = "gray"))
-
-for(i in groups) {
-  pvals <- eff.dt %>% 
-    dplyr::select(condition, SSTR_MMEJSSTR, group) %>% 
-    group_by(condition) %>%
-    filter(group %in% c("iDomain", i)) %>%
-    do(broom::tidy(wilcox.test(SSTR_MMEJSSTR ~ group, data = .))) %>%
-    ungroup() %>%
-    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
-    dplyr::select(condition, statistic, p.value, p.adj) %>%
-    arrange(p.adj)
-  print(i)
-  print(pvals)
-}
 ```
+
 
 ### Figure legend
 (D) Same as in C, but showing the MMEJ:SSTR balance. See also Figure S8J.
 
-```{r Fig7F end point pathway proportion, fig.height=6, fig.width=10}
-endpoint = readRDS("/DATA/projects/DSBrepair/data/R/cl20201124_end_ratio.RDS")
-endpointSSTR = readRDS("/DATA/projects/DSBrepair/data/R/cl20201124_SSTR_end_ratio.RDS")
+```{r Fig7D NHEJ ratio per heterochomatin domain, fig.height=6, fig.width=10}
+ 
+plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_ssODN_64'], opt_df,
+                   domain_levels, 'NHEJ', min_count = 20, y_plabel=c(.8, .9))
 
-colores <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#E1251B", "MMEJ" = "#223DA0", "SSTR" = "#007A4C")
-
-ggplot(endpointSSTR,
-       aes(barcode, proportion, width=1)) +
-  geom_bar(stat = "identity", aes(fill = indel_type)) +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("Pathway Contribution") +
-  xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
-
-ggplot(endpoint,
-       aes(barcode, proportion, width=1)) +
-  geom_bar(stat = "identity", aes(fill = indel_type)) +
-  theme_bw(base_size = 16) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ylab("Pathway Contribution") +
-  xlab("IPR") +
-  scale_fill_manual("legend", values = colores) +
-  ggtitle("Pathway contribution per barcode")
 ```
 
 
@@ -1234,8 +1097,17 @@ plot_comb_grid_boxplot(eff.dt, opt_df, domain_levels, 'SSTR_MMEJSSTR', group_by=
 ### Figure legend
 
 
+
+
+# Bibliography
+```{r citations}
+cite_packages()
+```
+
+
 # Session Info
 ```{r}
+
 paste("Run time: ",format(Sys.time()-StartTime))
 getwd()
 date()
