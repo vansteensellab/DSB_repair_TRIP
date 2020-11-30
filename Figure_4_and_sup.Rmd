@@ -1,5 +1,5 @@
 ---
-title: "Figure 4 and supplemental 5"
+title: "Figure 4 and supplementary figure 4"
 author: "Ruben Schep"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
 output:
@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20201029
+in.dir.date = 20201129
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -49,6 +49,8 @@ library(dplyr)
 library(tidyr)
 library(broom)
 library(cowplot)
+library(report)
+library(purrr)
 
 ## Colors used in this script
 colores <- c("MMEJ_MMEJNHEJ" = "black")
@@ -826,26 +828,26 @@ intercept_df = data.frame(antibody, intercepts)
 
 
 ## Plotting the decompressed total indel frequency, with in red the predicted relationshop (model with slope = 1)
-fc.mean.DDR.model %>% 
-  filter(plasmid == "LBR2") %>% 
-  ggplot(., aes(log2_mean_pred, log2_m.pulldown, color = chromatin, group = 1)) + 
-  geom_point(size = 3) +
-  geom_smooth(method = lm) + 
-  geom_abline(data= intercept_df, aes(intercept = intercepts, slope = 1), size = 1, color = "red") +
-  stat_cor() + 
-  facet_grid(~ antibody) + 
-  scale_color_manual(values = chrom_colors2) +
-  theme_bw(base_size = 16) + 
-  ylab("log2(mean pull down)") + 
-  xlab("log2(average modelled gene editing frequency)") + 
-  ggtitle("modelled gene editing frequency vs. mean pull down") +
-  theme(legend.position = "bottom")
+# fc.mean.DDR.model %>% 
+#   filter(plasmid == "LBR2") %>% 
+#   ggplot(., aes(log2_mean_pred, log2_m.pulldown, color = chromatin, group = 1)) + 
+#   geom_point(size = 3) +
+#   geom_smooth(method = lm) + 
+#   geom_abline(data= intercept_df, aes(intercept = intercepts, slope = 1), size = 1, color = "red") +
+#   stat_cor() + 
+#   facet_grid(~ antibody) + 
+#   scale_color_manual(values = chrom_colors2) +
+#   theme_bw(base_size = 16) + 
+#   ylab("log2(mean pull down)") + 
+#   xlab("log2(average modelled gene editing frequency)") + 
+#   ggtitle("modelled gene editing frequency vs. mean pull down") +
+#   theme(legend.position = "bottom")
 ```
 
 ### Figure legend
 
-## Panel 4H
-```{r Fig4H residuals vs MMEJ:NHEJ balance, fig.height=4, fig.width=10}
+## Panel 4G
+```{r Fig4G residuals vs MMEJ:NHEJ balance, fig.height=4, fig.width=10}
 # Calculate the residuals from the datapoints in the previous figure from the predicted relationship
 LigIV_res <- lm_guides_LigIV %>% augment %>% mutate(antibody = "LigIV")
 MRE11_res <- lm_guides_MRE11 %>% augment  %>% mutate(antibody = "MRE11")
@@ -876,28 +878,33 @@ fc.mean.DDR.model %>%
   xlab("MMEJ:NHEJ balance") + 
   ggtitle("residuals from the red model (slope = 1) vs MMEJ:NHEJ balance per antibody") +
   theme(legend.position = "bottom")
-```
 
-
-
-## Panel 4I
-
-```{r Fig4I MMEJ balance vs. mean fold change, fig.height=4, fig.width=10}
 fc.mean.DDR.model %>% 
-  filter(plasmid == "LBR2") %>%
-  ggplot(., aes(m.MMEJ,log2(m.fc), color = chromatin, group = 1)) + 
-  geom_point(size = 3) +
-  geom_smooth(method = lm) + 
-  scale_color_manual(values = chrom_colors2) +
-  stat_cor() + 
-  facet_grid(. ~ antibody) + 
-  theme_bw(base_size = 16) + 
-  coord_cartesian() +
-  ylab("log2(average protein ChIP cut/uncut) at 16h") + 
-  xlab("MMEJ/(MMMEJ+NHEJ) at 72h") + 
-  ggtitle("MMEJ:NHEJ balance vs. mean fold change") +
-  theme(legend.position = "bottom")
+  filter(plasmid == "LBR2", chromatin %in% c("Euchromatin", "Triple Heterochromatin")) %>% 
+  mutate(chromatin = ifelse(chromatin == "Euchromatin", "euchrom", "triple")) %>%
+  left_join(resids_model, by = c("antibody", "log2_mean_pred", "log2_m.pulldown")) %>% 
+  distinct(antibody, chromatin, .resid, barcode) %>% 
+  nest(data = - antibody) %>% 
+  mutate(
+    test = map(data, ~ wilcox.test(.$.resid ~ .$chromatin)), # S3 list-col
+    tidied = map(test, tidy)
+  ) %>% 
+  unnest(tidied)
+
+fc.mean.DDR.model %>% 
+  filter(plasmid == "LBR2", chromatin %in% c("Euchromatin", "Triple Heterochromatin")) %>% 
+  mutate(chromatin = ifelse(chromatin == "Euchromatin", "euchrom", "triple")) %>%
+  left_join(resids_model, by = c("antibody", "log2_mean_pred", "log2_m.pulldown")) %>% 
+  distinct(antibody, chromatin, .resid, barcode) %>%
+  ggplot(aes(chromatin, .resid)) + 
+  geom_quasirandom() + 
+  theme_bw(base_size = 16) +
+  facet_grid(. ~ antibody) +
+  stat_compare_means() +
+  stat_summary(fun=mean, geom="crossbar", color='red')
 ```
+
+
 
 # Supplementary Figure 4
 ## Panel S4A
@@ -964,83 +971,60 @@ plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_64'], opt_df,
 ## Panel S4D
 
 
-```{r FigS4D MMEJ balance other guides, fig.height=8, fig.width=16}
+```{r FigS4D MMEJ balance other guides, fig.height=6, fig.width=10}
 MMEJbal_otherguides_tib = readRDS("/DATA/projects/DSBrepair/data/R/rs20201005_clone5_otherguides_MMEJbalance_chromdomains.RDS") 
 
-MMEJbal_otherguides_tib = MMEJbal_otherguides_tib %>% mutate(LAD_domain == ifelse(is.na(LAD_domain), "iDomain", LAD_domain)) #,
-                                                             # chrom_grp = ifelse(H3K27me3_domain == "Domain" & 
-                                                             #                      H3K9me2_domain == "iDomain" & 
-                                                             #                      LAD_domain  == "iDomain" & 
-                                                             #                      late_replicating_domain == "iDomain", "H3K27me3", chrom_grp))
+MMEJbal_otherguides_het_eu_tib = MMEJbal_otherguides_tib %>% 
+  mutate(chromatin = ifelse(chrom_grp == "euchromatin", "euchromatin", "heterochromatin")) %>%
+  filter(drug == "DMSO", !is.na(chromatin))
 
-# my_comparisons <- list( c("triple", "euchromatin"), c("other", "euchromatin"), c("other", "triple"), c("H3K27me3", "triple"), c("other", "H3K27me3"), c("H3K27me3", "euchromatin"))
-# 
-# 
-# 
-# MMEJbal_otherguides_tib %>% filter(drug == "DMSO", !is.na(chrom_grp)) %>% ggviolin(., x = "chrom_grp", y = "MMEJ_MMEJNHEJ",
-# color = "chrom_grp", palette = chrom_colors, facet.by = "plasmid", add = "jitter", order = c("euchromatin", "other",  "H3K27me3", "triple"))+
-# stat_compare_means(comparisons = my_comparisons)
+MMEJbal_otherguides_het_eu_tib %>%
+  ggplot(aes(chromatin, MMEJ_MMEJNHEJ)) + 
+  geom_quasirandom() + 
+  theme_bw(base_size = 16) +
+  facet_grid(. ~ plasmid) +
+  stat_compare_means() +
+  stat_summary(fun=mean, geom="crossbar", color='red')
 
 
-domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
+MMEJbal_otherguides_triple_tib = MMEJbal_otherguides_tib %>% 
+  mutate(LAD_domain == ifelse(is.na(LAD_domain), "iDomain", LAD_domain)) %>%
+  filter(chrom_grp %in% c("triple", "euchromatin"), 
+         drug == "DMSO")
 
-domains = paste0(domain_levels, '_domain')
+MMEJbal_otherguides_triple_tib %>%
+  ggplot(aes(chrom_grp, MMEJ_MMEJNHEJ)) + 
+  geom_quasirandom() + 
+  theme_bw(base_size = 16) +
+  facet_grid(. ~ plasmid) +
+  stat_compare_means() +
+  stat_summary(fun=mean, geom="crossbar", color='red')
+```
+## Panel 4E
 
-barcodes_all_plasmids <- MMEJbal_otherguides_tib %>%
-  group_by(barcode) %>%
-  dplyr::summarise(n = n()) %>%
-  filter(n > 2) %>%
-  pull(barcode)
-
-indel.dt = MMEJbal_otherguides_tib %>%
-  filter(barcode %in% barcodes_all_plasmids, plasmid != 'LBR2', drug == "DMSO") %>%
-  dplyr::select(barcode, plasmid, MMEJ_MMEJNHEJ, domains) %>% 
-  spread(plasmid, MMEJ_MMEJNHEJ) %>%
-  distinct(barcode, .keep_all = TRUE) %>%
-  data.table()
-
-
-indel.dt[indel.dt=='iDomain'] <- 0
-indel.dt[indel.dt=='Domain'] <- 1
-
-indel.dt[is.na(LAD_domain), LAD_domain:=0]
-
-indel.dt[, (domains) := lapply(.SD, as.numeric), .SDcols = domains]
-
-colnames(indel.dt) = gsub('_domain', '', colnames(indel.dt))
-
-opt_df = get_combinations(domain_levels)
-
-### CHRIST ####
-# Can you now plot the ratio MMEJ_MMEJNHEJ of these domains that are significant vs the control condition to see the fold change and significance?
-
-eff.dt = melt(indel.dt, measure.vars=c('LBR1', 'LBR12', 'LBR15'),
-              variable.name='condition', value.name='MMEJ_MMEJNHEJ')
-
-guide_colors <- c("LBR1" = "#c8e3b4", "LBR12" = "#7fccbb", "LBR15" = "#2c7fb9", "LBR2" = "#293990")
-guide_cols <- guide_colors[1:3]
-
-plot_comb_grid_bothplot(eff.dt, opt_df, domain_levels, 'MMEJ_MMEJNHEJ', group_by='condition', color=guide_cols, min_count = 20)
-
-groups <- unique(eff.dt$group)[c(1, 3:13)]
-
-for(i in groups) {
-  pvals <- eff.dt %>% 
-    dplyr::select(condition, MMEJ_MMEJNHEJ, group) %>% 
-    group_by(condition) %>%
-    filter(group %in% c("iDomain", i)) %>%
-    do(broom::tidy(wilcox.test(MMEJ_MMEJNHEJ ~ group, data = .))) %>%
-    ungroup() %>%
-    mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
-    dplyr::select(condition, statistic, p.value, p.adj) %>%
-    arrange(p.adj)
-  print(i)
-  print(pvals)
-} 
+```{r FigS4E MMEJ balance vs. mean fold change, fig.height=4, fig.width=10}
+fc.mean.DDR.model %>% 
+  filter(plasmid == "LBR2") %>%
+  ggplot(., aes(m.MMEJ,log2(m.fc), color = chromatin, group = 1)) + 
+  geom_point(size = 3) +
+  geom_smooth(method = lm) + 
+  scale_color_manual(values = chrom_colors2) +
+  stat_cor() + 
+  facet_grid(. ~ antibody) + 
+  theme_bw(base_size = 16) + 
+  coord_cartesian() +
+  ylab("log2(average protein ChIP cut/uncut) at 16h") + 
+  xlab("MMEJ/(MMMEJ+NHEJ) at 72h") + 
+  ggtitle("MMEJ:NHEJ balance vs. mean fold change") +
+  theme(legend.position = "bottom")
 ```
 
-
 ### Figure legend
+
+# Bibliography
+```{r citations}
+cite_packages()
+```
 
 
 # Session Info

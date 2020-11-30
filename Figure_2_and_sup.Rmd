@@ -27,7 +27,7 @@ pdf.options(useDingbats = FALSE)
 ```
 
 # Introduction
-Date <- substr(gsub("-","",Sys.time()),1,8)
+
 ## Description of Data
 
 # Data processing
@@ -40,38 +40,28 @@ Date <- substr(gsub("-","",Sys.time()),3,8)
 
 # libraries:
 library(ggplot2)
+library(ggbeeswarm)
 library(ggpubr)
 library(reshape)
 library(reshape2)
-# library(tibble)
-# library(GenomicRanges)
-# library(rtracklayer)
-# library(corrr)
-# library(Hmisc)
-library(ggbeeswarm)
-library(RColorBrewer)
 library(data.table)
 library(dplyr)
-# library(plyr)
 library(tidyr)
-# library(stringr)
-# library(plotly)
 library(ggpmisc)
 library(pheatmap)
+library(RColorBrewer)
+library(report)
 
 
-in.dir.date = 20201029
+in.dir.date = 20201129
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
-color_redblue <- rev(brewer.pal(11,"RdBu"))
-duocolor <- c("#EE756E", "#2BB6BE")
+
+# Color codes
 colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
-colores <- c("wt" = "#808184", "other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
-colori  <- c("other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
-colora <- c("0" = "#808184", "1" = "#e1251b", "-7" = "#26419a", "ssODN" = "#007A4C")
-coloru <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "MMEJplusNHEJplusHDR" = "#EE8A2A", "HDR" = "#007A4C", "MMEJplusHDR" = "#EE8A2A")
-colory <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black", "SSTR" = "#007A4C")
-colorys <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "MMEJplusNHEJ" = "#EE8A2A", "all" = "black")
+colores <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
+colori  <- c("other_indels" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C") 
+colora <- c("0" = "#808184", "1" = "#e1251b", "-7" = "#26419a", "ssODN" = "#007A4C") 
 ```
 
 ## Custom functions
@@ -229,8 +219,6 @@ bc_chrom_loc <- filter(analysis.mapped.integrations.df, barcode %in% barcodeset)
   dplyr::select(barcode, seqname, start) %>% mutate(loc = paste0(seqname, ": ", start)) %>% 
   left_join(NHEJratio, by = "barcode")
 
-colore <- c("wt" = "#808184", "other" = "black", "NHEJ" = "#e1251b", "MMEJ" = "#26419a", "SSTR" = "#007A4C")
-
 bc_mut_tib <- trip_tib_mut %>% 
   filter(barcode %in% barcodeset, 
          mutation != "ssODN", 
@@ -245,7 +233,7 @@ bc_mut_tib %>% distinct(barcode, nexp)
 p <- ggplot(bc_mut_tib, 
             aes(mutation, freq)) + 
   geom_bar(stat = "identity", aes(fill = color)) + 
-  scale_fill_manual("legend", values = colore) + 
+  scale_fill_manual("legend", values = colores) + 
   theme_bw() +
   # geom_text(aes(x = 7, y = .7, label = label_efficiency)) +
   # geom_text(aes(x = 7, y = .6, label = label_ratio)) +
@@ -344,7 +332,7 @@ trip_tib_mut_all_selection %>%
   geom_bar(stat = "identity") + 
   theme_bw(base_size = 16) + 
   theme(legend.position = c(.1, .7)) +
-  scale_fill_manual("legend", values = colore) + 
+  scale_fill_manual("legend", values = colores) + 
   coord_cartesian(ylim = c(2, 60)) +
   scale_x_discrete(name="Indel size", breaks = c(seq(-120, 15, by = 10)))
 
@@ -356,7 +344,7 @@ trip_tib_mut_all_selection %>%
   geom_bar(stat = "identity") + 
   theme_bw(base_size = 16) + 
   theme(legend.position = c(0.1, 0.7)) +
-  scale_fill_manual("legend", values = colore) + 
+  scale_fill_manual("legend", values = colores) + 
   coord_cartesian(ylim = c(0, 1.8)) +
   scale_x_discrete(name="Indel size", breaks = c(seq(-120, 15, by = 10)))
 
@@ -785,9 +773,9 @@ p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, orde
   theme_bw(base_size = 16)
 p + scale_fill_manual("legend", values = colori) +
   scale_x_discrete(labels=c("siNT" = "Non-targeting siRNA",
-                            "siCtIP" = "siCtIP",
-                            "siPolQ" = "siPolQ",
-                            "siRad51" = "siRad51")) +
+                            "siCtIP" = "siRBBP8",
+                            "siPolQ" = "siPOLQ",
+                            "siRad51" = "siRAD51")) +
   labs(x = element_blank(),
        y = "abundance") +
   facet_grid(~ drug)
@@ -906,9 +894,9 @@ ggplot(filter(trip_tib_mut_filt,
   theme_bw(base_size = 16) + 
   scale_color_manual("legend", values = colora) +
   facet_grid(~ mutation) + 
-  scale_x_discrete(labels=c("ratio_siCtIP" = "siCtIP",
-                            "ratio_siPolQ" = "siPolQ",
-                            "ratio_siRad51" = "siRad51")) +
+  scale_x_discrete(labels=c("ratio_siCtIP" = "siRBBP8",
+                            "ratio_siPolQ" = "siPOLQ",
+                            "ratio_siRad51" = "siRAD51")) +
   geom_text(data = repair_pvals, aes(x = si_ratio, y = 2.4 , label = p.star), size = 6)
 ```
 
@@ -962,8 +950,8 @@ p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, orde
   geom_bar(stat = "identity", position = "fill")  +
   theme_bw(base_size = 16)
 p + scale_fill_manual("legend", values = colori) +
-  scale_x_discrete(labels=c("ratio_siPolQ" = "siPolQ",
-                            "ratio_siRad51" = "siRad51",
+  scale_x_discrete(labels=c("ratio_siPolQ" = "siPOLQ",
+                            "ratio_siRad51" = "siRAD51",
                             "ratio_siBRCA1" = "siBRCA1",
                             "ratio_siBRCA2" = "siBRCA2")) +
   labs(x = element_blank(),
@@ -1045,8 +1033,8 @@ ggplot(filter(trip_tib_mut_filt_HR, mutation %in% c("-7", "1", "0")), aes(si_rat
   theme_bw(base_size = 16) + 
   scale_color_manual("legend", values = colora) +
   facet_wrap(~ mutation) + 
-  scale_x_discrete(labels=c("ratio_siPolQ" = "siPolQ",
-                            "ratio_siRad51" = "siRad51",
+  scale_x_discrete(labels=c("ratio_siPolQ" = "siPOLQ",
+                            "ratio_siRad51" = "siRAD51",
                             "ratio_siBRCA1" = "siBRCA1",
                             "ratio_siBRCA2" = "siBRCA2")) +
   geom_text(data = HR_pvals, aes(x = si_ratio, y = .8 , label = p.star), size = 6)
@@ -1054,6 +1042,12 @@ ggplot(filter(trip_tib_mut_filt_HR, mutation %in% c("-7", "1", "0")), aes(si_rat
 
 ### Figure legend
 *(h)*  
+
+# Bibliography
+```{r citations}
+cite_packages()
+```
+
 
 # Session Info
 ```{r}
