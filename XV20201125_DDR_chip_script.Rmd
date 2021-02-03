@@ -1,0 +1,385 @@
+---
+title: "xv20200915_DDR_proteins_RS"
+author: "Xabier Vergara"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    code_folding: show
+    highlight: monochrome
+    theme: journal
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+  editor_options:
+    chunk_output_type: console
+modified by: null
+---
+
+knitr document van Steensel lab
+
+# Introduction
+
+This script processes and makes the figures coming from DNA repair factor ChIPs
+
+## Description of Data
+
+Indel files : *count.table
+
+| barcode  | call | indel | count
+| ------- | --------- | ----- | ------ |
+| TTCTATTCGCACACAA | ins | 1 | 35 |
+| TTTCCCACATCAGGAG | wt | 0 | 67 |
+| CCATAGTAGTGATTAC | del | -4 | 1 |
+
+Barcode files: *starcode file
+
+| barcode | counts | variants |
+| --------|--------|----------|
+|TTCTATTCGCACACAA | 2345 | .... |
+
+Aim: In this experiment, I pulled down DNA repair proteins at 16 hours post CRISPR/Cas9 induction, with or without plasmid transfection. I pulled down on multiple DDR proteins: gH2AX, MRE11, DNA ligase III, DNA ligase IV, Rad51 and POLQ.
+
+# Fill in these chunk before running the script
+```{r}
+indel.directory = "/DATA/projects/DSBrepair/data/xv20200903_DDR_RS_revision_d/indelPCR_counts/"
+bc.directory = "/DATA/projects/DSBrepair/data/xv20200903_DDR_RS_revision_d/counts/"
+descr.directory = "/DATA/projects/DSBrepair/config/xv20200903_E1219_sample_list.txt"
+```
+
+
+# Data importing and processing
+## Path, Libraries, Parameters and Useful Functions
+```{r setup, message=FALSE, warnings=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+StartTime <-Sys.time()
+
+# 6-digit Date tag:
+Date <- substr(gsub("-", "",Sys.time()),1,8) 
+
+# libraries:
+library(tidyverse)
+library(data.table)
+library(plyr)
+library(parallel)
+library(gtools)
+library(tibble)
+library(ggpubr)
+library(ggbeeswarm)
+```
+
+# Functions
+```{r}
+#Plot function - Read distribution per sample
+st0.plot <- function(df) {
+  p <- ggplot(df %>% dplyr::group_by(exp,clone) %>% dplyr::summarise(mean.bc.counts = sum(bcreads)/length(barcode))) +  
+      geom_col(aes(exp, mean.bc.counts, fill = clone),position = "dodge") + 
+      theme_bw() + coord_cartesian() +
+      ggtitle("bcPCR read number per integration") + 
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), axis.title.x = element_blank()) + 
+      ylab("mean bcPCR counts")
+}
+
+#Step 1 normalization - Library size normalization
+lib.size.norm <- function(df) {
+  dt <- df %>% filter(spikein == TRUE) %>% dplyr::group_by(exp) %>% dplyr::summarise(tot.bc.counts = sum(bcreads)) %>% right_join(df, by = "exp") %>% mutate(lin.bc.counts = bcreads/tot.bc.counts)
+  dt[-grep("tot",colnames(dt))]
+}
+
+#Step 1 plot function - Library size normalization plot
+st1.plot <- function(df) {
+  p <- ggplot(df %>% dplyr::group_by(exp,clone) %>% dplyr::summarise(mean.lin.bc.counts = sum(lin.bc.counts)/length(barcode))) + geom_col(aes(exp, mean.lin.bc.counts, fill = clone),position = "dodge")+ theme_bw() + coord_cartesian() + ggtitle("Library normalized bcPCR read number per integration") + theme(axis.text.x = element_text(angle = 90,vjust = 0.5 ,hjust = 1), axis.title.x = element_blank()) + ylab("mean library normalized bcPCR counts")
+}
+
+#Step 2 normalization - Input normalization
+input.norm <- function(df) {
+  dt <- df %>% filter(antibody == "Input") %>% dplyr::group_by(exp) %>% mutate(inp.lin.bc.counts = lin.bc.counts) %>% ungroup() %>%  select(c("barcode","inp.lin.bc.counts","plasmid")) %>% right_join(df, by = c("barcode","plasmid")) %>% mutate(iln.bc.counts = lin.bc.counts/inp.lin.bc.counts)
+  dt[-grep("inp",colnames(dt))]
+}
+
+#Step 2 normalization - Input normalization plot
+st2.plot <- function(df){
+  p <- ggplot(df %>% dplyr::group_by(exp,clone) %>% dplyr::summarise(mean.iln.bc.counts = sum(iln.bc.counts)/length(barcode))) + geom_col(aes(exp, mean.iln.bc.counts, fill = clone),position = "dodge") + theme_bw() + coord_cartesian() + ggtitle("Library and input normalized bcPCR read number per integration") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), axis.title.x = element_blank()) + ylab("mean library & input norm. counts")
+}
+
+#Step 3 normalization - dcast data table
+sp.dcast <- function(sp.dt) {
+  sp.dt %>% filter(spikein == TRUE) %>% ungroup() %>% select(c("barcode","plasmid","iln.bc.counts")) %>% reshape2::dcast(barcode ~ plasmid, value.var = "iln.bc.counts", drop = TRUE)%>% column_to_rownames(var = "barcode")
+}
+
+#Step 3 normalization - plot
+spikein.plot.fn <- function(dt,ttl, j, s) {
+  for (i in colnames(j[[dt]])){
+    p <- ggplot(data = j[[dt]], aes(y = j[[dt]][[s]],x = j[[dt]][[i]])) + geom_point() + geom_smooth(method = lm, formula = 'y~x') + stat_cor() + labs( x = i, y = s) + ggtitle(paste(ttl[[dt]], "pull down")) + theme_bw()
+    if(i != "EV") {print(p)}
+  }
+}
+
+#lm.calc: This function calculates lm coefficients for each column vs Ref column
+lm.calc <- function(sp.dt){
+  lm.df <- data.frame(variables = c("Intercept","Slope"))
+  for (x in colnames(sp.dt)){
+    lm.row <- coef(lm(sp.dt[['EV']] ~ sp.dt[[x]], sp.dt))
+    lm.df <- cbind(lm.df, lm.row)
+    names(lm.df)[length(lm.df)] <- x
+  }
+  rownames(lm.df) <- c()
+  lm.df
+}
+
+#Correction function - Transfor data based on lm model
+df.arrange <- function(x){
+  st1 <- do.call("rbind.fill",x)
+  st2 <- st1[order(st1$variables),]
+  st2$antibody <- names(x)
+  st4 <- reshape2::melt(st2, id.vars = c("antibody","variables"))
+  st4slope <- st4 %>% filter(variables == "Slope") %>% dplyr::rename(plasmid = variable, slope = value) %>% select(-"variables")
+  st4int <- st4 %>% filter(variables == "Intercept") %>% dplyr::rename(plasmid = variable, intercept = value) %>% select(-"variables")
+  st5 <- left_join(st4slope,st4int, by = c("plasmid","antibody"))
+  st5$timepoint <- as.character(st5$plasmid)
+  st5
+}
+
+#Variable selection function
+lin.sel <- function(x){
+  x %>% ungroup() %>% dplyr::select(c("barcode","antibody","plasmid","iln.bc.counts"))
+}
+```
+
+## Data import
+In this section, I will import all the the data needed for the further analysis. This will include:
+* Sequencing data (indel and bc PCR)
+* Descriptive variables (.txt format)
+* Genomic location data and cluster analysis (data from CL)
+
+# Indel file import
+```{r import}
+# Set directory to the indel PCR output folder of the CRISPR-TRIP snakemake script
+setwd(indel.directory)
+
+# Import files in list and make individual tables
+file.list <- file.list <- list.files(".",
+    pattern='*[.]co', full.names=T)
+
+# import the data
+df.list.indel <- mclapply(file.list, read.table, col.names=c('barcode', 'call', 'indel', 'count'), mc.cores = 20, stringsAsFactors = FALSE, header=T)
+
+# Rename data files. I always use the first line to remove the file type. The second comand line, is an example of how to remove other common pieces that are not informative
+names(df.list.indel) <- gsub('.*?/(.*?)[.]co.*', '\\1', file.list)
+
+
+# Print the file names and save the number of files
+names(df.list.indel)
+
+```
+# Bc file import
+I repeat the same procedure but with barcode PCR reads files
+```{r}
+# Set directory to the barcode PCR output folder of the CRISPR-TRIP snakemake script
+setwd(bc.directory)
+
+# Import files in list and make individual tables
+file.list.bc <- file.list.bc <- list.files(".",
+    pattern='*code.co', full.names=F)
+
+# import the data
+df.list.bc <- mclapply(file.list.bc, read.table, col.names=c('barcode', 'bcreads', 'x'), mc.cores = 20, stringsAsFactors = FALSE)
+
+# rename the lists
+names(df.list.bc) <- gsub('(*?).starcode.co.*', '\\1', file.list.bc)
+names(df.list.bc) <- gsub('^.*bcPCR.', 'bc.', names(df.list.bc))
+names(df.list.bc) <- gsub('^.*indelPCR.', 'indel.', names(df.list.bc))
+names(df.list.bc) <- gsub('Ind_', '', names(df.list.bc))
+names(df.list.bc) <- gsub('bc_', '', names(df.list.bc))
+# these are the samples
+names(df.list.bc)
+```
+
+# Load descriptive variables to the data frame
+```{r}
+# Load txt file
+descr.variables.dt <- read.table(descr.directory, header = TRUE, stringsAsFactors = FALSE)
+descr.variables.tib <- as_tibble(descr.variables.dt) %>% mutate(exp = ID) %>% select(-clone)
+```
+
+# Select barcodes in clone 5 and 9
+```{r}
+# Load barcodes in clone 5 and 9
+load("/DATA/projects/DSBrepair/data/XV20190926_Clones_Integrations.Rdata")
+clones.DDR <- clones.barcode %>% filter(clone %in% c("RSTP2_5","RSTP2_9"))
+
+# Load mapped locations
+load("/DATA/projects/DSBrepair/data/XV20191010_Mapped_Integrations_Chromatin_status.Rdata")
+```
+
+### Some data pre-processing
+Set everything in a dataframe that contains barcodes, indel ratios, and efficiencies.
+
+```{r indeldataframe}
+# Generate a datatable with the number of indelreads per mutations, sample and barcode 
+mut.list = mclapply(names(df.list.indel), function(exp){
+    dt = data.table(df.list.indel[[exp]])
+    dt[, indel:=as.character(indel)]
+    dt[call=='wt' & indel=='2', indel:='ssODN']
+    sum_count = data.table(exp=exp,
+                           dt[, list(count=sum(count)),by=c('barcode', 'indel')])
+    count_cast = data.table::dcast(sum_count[!is.na(indel),], exp + barcode ~ indel,
+                      value.var='count')
+    return(count_cast)
+}, mc.cores=10)
+
+#Bind all data frames (one per sample) together
+
+indels.dt = do.call(rbind, c(mut.list, fill=T))
+indels.dt[is.na(indels.dt)] = 0
+#Generate a datatable with the number of bc read per sample and barcode
+
+counts.list <- mclapply(names(df.list.bc), function (exp){
+                          dt = data.table(df.list.bc[[exp]])
+                          sum_count = data.table(exp=exp,
+                          dt[, list(bcreads=sum(bcreads)), by=c('barcode')])
+                          }
+                           )
+
+#Bind alll barcode dataframes together
+counts.dt = do.call(rbind, c(counts.list, fill=T))
+
+# Change indel.dt
+indels.dt <- select(indels.dt, -"Inf")
+#Change colnames in indels.dt
+
+indel_cols <- names(indels.dt)[grep("[0-9]|ssODN", names(indels.dt))]
+indel_cols <- gsub("-", "del_", indel_cols)
+indel_cols[grep("^[0-9].*", indel_cols)] <- gsub("^", "ins_", indel_cols[grep("^[0-9].*", indel_cols)])
+indel_cols[grep("ins_0", indel_cols)] <- "wt"
+names(indels.dt) <- c("exp", "barcode", indel_cols)
+
+# Filter both indels and counts dt for the barcodes in the clones
+indels.dt <- indels.dt %>% filter(barcode %in% clones.DDR$barcode)
+counts.dt <- counts.dt %>% filter(barcode %in% clones.DDR$barcode)
+
+
+# Dimensions check
+dim(indels.dt)
+dim(counts.dt)
+
+# Change names counts dt
+counts.dt.barcode <- counts.dt %>% filter(grepl("bc",exp)) %>% mutate(ID = gsub("bc.","",.$exp)) %>% as_tibble() %>% separate(ID, c("n.exp","replicate","plasmid","A","B"), fill = "right") %>% mutate(antibody = case_when(A == "Lig" ~ paste0(A,B), TRUE ~ A)) %>% select(-A,-B) %>% left_join(clones.DDR, by = "barcode") %>% mutate(exp = paste(n.exp,replicate,plasmid,antibody, sep = "_"), spikein = case_when(clone == "RSTP2_9" ~ T, TRUE ~ F )) %>% filter(complete.cases(.))
+
+#Split reads
+count.split <- split(counts.dt.barcode, counts.dt.barcode$replicate)
+
+# Change names indels.dt
+indels.dt.names <- indels.dt %>% separate(exp, c("n.exp","replicate","plasmid","A")) %>% as_tibble() %>% select(-A) %>% mutate(exp = paste(n.exp,replicate,plasmid, sep = "_")) %>% left_join(clones.DDR, by ="barcode") %>% filter(clone == "RSTP2_5")
+
+chip.analysis.tib <- indels.dt.names %>% mutate(indelreads = rowSums(.[, indel_cols]),
+                                                  MMEJscore = del_7 / (del_7 + ins_1),
+                                                  NHEJscore = ins_1 / (del_7 + ins_1),
+                                                  freqMMEJ = del_7/indelreads,
+                                                  freqNHEJ = ins_1/indelreads,
+                                                  NHEJMMEJratio = ins_1 / del_7,
+                                                  freqcut = 1 - (wt/indelreads)) %>% select(-all_of(indel_cols))
+
+```
+
+# Block 2: Spike in normalization
+
+## Spike in analysis
+This part of the pipeline, will be a general part that will give us the absolute signal value of each integration in each sample. It will have the following steps:
+1. Library normalization (only over clone #9)
+2. Input normalization
+3. Spike in linear regression formula calculation, per sample (y = ax + b; y = Ref; x = Sample)
+4. Use this formula to normalize the values
+5. Save the df and paste it to "analysis.clones.tib"
+
+In the process, I will also generate some graphs to check that everything goes as expected
+# Step 0: plot bc.counts
+
+```{r}
+#Plot read distribution without normalization
+lapply(count.split,st0.plot)
+```
+
+# Step 1: Library normalization
+```{r}
+#Run normalization
+analysis.ln <- lapply(count.split,lib.size.norm)
+#Plot data after normalization
+lapply(analysis.ln,st1.plot)
+
+```
+
+# Step 2: Input normalization
+```{r}
+#Run normalization
+lin.analysis <- lapply(analysis.ln, input.norm)
+#Plot data after normalization
+lapply(lin.analysis, st2.plot)
+
+```
+
+# Step 3 pre: Dynamic range quality control. Does spike in data correlate properly in different samples.
+```{r, echo = F}
+#Select spike in barcodes
+spi.analysis <- lapply(lin.analysis, function(x) filter(x, spikein == TRUE))
+#Generate a nested list
+n.lin.list <- lapply(spi.analysis, function(x) split(x,x$antibody))
+# Apply sp.dcast function
+n.dcast.list <- lapply(n.lin.list, function(x) lapply(x, sp.dcast))
+#Analysis dcast plots
+analysis.spikein.plot.n.input <- lapply(n.dcast.list, function(x) x[-grep("Input",names(x))])
+
+#Apply function in every element and print pdf with all the graphs
+pdf("xv20201201_SpikeInIntegrationSignalEV.pdf", width = 5, height = 3)
+lapply(analysis.spikein.plot.n.input, function(x) lapply(seq_along(x), spikein.plot.fn, ttl = names(x), j = x, s = "EV"))
+dev.off()
+```
+
+
+# Step 3: Spike in linear formula calculation
+```{r}
+#Apply lm.calc function
+n.lm.split.list <- lapply(n.dcast.list, function(x) lapply(x,lm.calc))
+
+#Apply pipe function
+norm.score <- lapply(n.lm.split.list,df.arrange)
+
+#Arrange n.lm.s
+analysis.lin2 <- lapply(lin.analysis, lin.sel)
+
+#Function
+norm.merged <- mapply(right_join, norm.score,analysis.lin2, SIMPLIFY = FALSE)
+norm.analysis.tib <- lapply(norm.merged, function(x) mutate(x, norm.pull.down = iln.bc.counts*slope + intercept))
+```
+
+
+
+#Step 4: Add norm.pull.down to analysis.tib tibble
+```{r}
+# Add norm.pull.down column to analysis.tib
+norm.tib.b <- lapply(norm.analysis.tib, function(x) x %>% select(c("antibody","plasmid","barcode","norm.pull.down")) %>% distinct())
+norm.tib.merged <- ldply(norm.tib.b, .id = "replicate")
+
+#Arrange indel data
+analysis.tib <- right_join(norm.tib.merged, chip.analysis.tib, by =  c("replicate","plasmid","barcode")) %>% filter(antibody != "Input")
+
+#Add fold change
+analysis.fold.change <- analysis.tib %>% select(replicate,plasmid,antibody,barcode,norm.pull.down) %>% reshape2::dcast(replicate + antibody + barcode ~ plasmid) %>% mutate(fold.change = LBR2/EV) %>% select(replicate, antibody,barcode,fold.change) %>% right_join(analysis.tib)
+```
+
+## Add chromatin data to this tibble
+
+```{r}
+#Load domain call per IPR data table
+new.domains <- readRDS("/DATA/projects/DSBrepair/data/R/cl20200423_clones_chip_domains.RDS") %>% filter(barcode  %in% unique(analysis.fold.change$barcode)) %>% mutate(chromatin = case_when(str_detect(group,"H3K27me3") ~ "H3K27me3", group == "late_replicating-LAD-H3K9me2" ~ "Triple Heterochromatin", group %in% c("LAD-H3K9me2","late_replicating-H3K9me2","late_replicating") ~ "other-heterochromatin",  TRUE ~ "Euchromatin"))
+
+#Remove replicates that didn't meet quality requirements
+final.analysis <- analysis.fold.change %>% left_join(new.domains %>% dplyr::select(barcode,chromatin), by = "barcode") %>% filter(!is.na(chromatin)) %>% filter(!(replicate == "R1" & antibody %in% c("LigIII","POLQ")) & !(replicate == "R2" & antibody == "LigIII"))
+```
+
+## Processed data export
+The files will be saved in the processed data folder.
+```{r export}
+# Tibble for ChIP analysis with useful variables for plotting
+saveRDS(final.analysis, file = "/DATA/usr/x.vergara/XV_ChIPIndels/XV20200902_DDR_RS_revision/XV20200902_DDR_RS_revision/data/xv20201201_DDR_data_CHIP.rds")
+```

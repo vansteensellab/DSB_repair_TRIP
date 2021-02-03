@@ -1,0 +1,571 @@
+knitr document van Steensel lab
+
+# Timeseries on TRIP clonal lines
+# Introduction
+
+We would like to know how DNA repair processes are influenced by the chromatin
+environment in the context double-strand brakes introduced by CRISPR/Cas9.
+From time-series data we can calculate kinetic rates of brake repair.
+Tao has previously worked out the kinetics in the endogenous locus of the LBR2 gene.
+
+
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(reshape2)
+library(plyr)
+library(rtracklayer)
+library("plyr")
+library(deSolve)
+library(minpack.lm)
+library(FME)
+library(truncnorm)
+library(colorspace)
+library(ggbeeswarm)
+library(stringr)
+library(gridExtra)
+
+spikein = 'GGTACCCATGATCAAC'
+
+DNA_color = c('MMEJ'="#008296", 'NHEJ'="#e63227", '-7'="#008296", '1'="#e63227",
+              'wt'="#7f8185", 'other'="#5C5E42", 'broken'="#BBABB1",
+              'SSTR'='#00a23a')
+
+get_combinations <- function(domain_vec){
+    n_domain = length(domain_vec)
+    get_ivec <-function (last_x, n_domain){
+    	if (last_x < n_domain){
+    		i_vec = c(0, c((last_x+1):n_domain))
+    	} else{
+    		i_vec = c(0)
+    	}
+    }
+
+    combine <- function(x_new, x_vec, n_domain){
+        new_vec = c(x_vec, x_new)
+        if (length(new_vec)==n_domain){
+            return(new_vec)
+        } else {
+            i_vec = get_ivec(max(new_vec), n_domain)
+            x_list = lapply(i_vec, combine, x_vec=new_vec,
+                            n_domain=n_domain)
+            return(do.call(rbind, x_list))
+        }
+    }
+
+    comb_list = lapply(c(0:n_domain), combine, x_vec=c(), n_domain=n_domain)
+
+    comb = do.call(rbind, comb_list)
+    comb_df = unique(t(apply(comb, 1, function(x){x[order(x)]})))
+
+    name_list = apply(comb_df, 1, function(x){
+    	name = paste(domain_vec[x], collapse='-')
+    	if (name == ''){
+    		name = 'iDomain'
+    	}
+    	return(name)
+    })
+
+    opt_list = lapply(domain_vec, function(d){
+    	 apply(comb_df, 1, function(x){
+    		opt = domain_vec[x]
+    		return(d%in%opt)
+    	})
+    })
+
+    opt_df = do.call(cbind, opt_list)
+    colnames(opt_df) = domain_vec
+    rownames(opt_df) = name_list
+
+    return(opt_df)
+}
+
+```
+```{r}
+
+
+clone5 = fread('/DATA/projects/DSBrepair/data/cl20190220_chip_clone5/cl20190222_clone5_LAD.txt',
+               stringsAsFactors=F, key='barcode',
+               col.names=c('seqnames', 'start', 'end', 'barcode', 'score',
+                           'strand', 'LAD'))
+
+setkey(clone5, 'barcode')
+
+clone5 = clone5[, c('barcode', 'LAD')]
+
+clone5 = rbind(clone5, list(c('CATTTCTGATCAATAA', 'ATACTATATTTAACGG'), c(1, 0)))
+
+
+
+near_dir = '/DATA/projects/DSBrepair/data/tracks_20190711/nearest/'
+
+file_list = list.files(near_dir, pattern='clone5', full.names=T)
+
+file.dt = data.table(str_match(file_list, '.*/clone5_(.*).txt'))
+names(file.dt) = c('file', 'target')
+domains.dt = file.dt[!is.na(file),
+                 fread(file, col.names=c('barcode', 'domain', 'distance')),
+				 by=c('target')]
+
+domains.dt[target=='repliseq', target:='late_replicating']
+
+domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
+
+domain_cast = data.table::dcast(domains.dt[target%in%domain_levels, ],
+                                barcode ~ target, value.var='domain')
+setkey(domain_cast, barcode)
+
+domain_cast[domain_cast=='iDomain'] <- 0
+domain_cast[domain_cast=='Domain'] <- 1
+
+domain_cast[domain_cast=='iAD'] <- 0
+domain_cast[domain_cast=='AD'] <- 1
+domain_cast[, (domain_levels) := lapply(.SD, as.numeric), .SDcols = domain_levels]
+
+opt_df = get_combinations(domain_levels)
+
+group_list = lapply(rownames(opt_df), function(opt_name){
+    opt = opt_df[opt_name, ]
+    in_vec = domain_levels[opt]
+    out_vec = domain_levels[!opt]
+    in_sum = rowSums(domain_cast[,..in_vec])
+    out_sum = rowSums(domain_cast[,..out_vec])
+    if (length(in_vec)==0){
+        in_group = which(out_sum == 0)
+    } else if (length(out_vec) == 0){
+        in_group = which(in_sum==length(in_vec))
+    } else  {
+        in_group = which(in_sum == length(in_vec) & out_sum==0)
+    }
+    return(in_group)
+})
+
+names(group_list) = rownames(opt_df)
+for (opt_name in names(group_list)){
+    i_vec = group_list[[opt_name]]
+    domain_cast[i_vec, group := opt_name]
+}
+
+
+meta.dt = fread('/DATA/projects/DSBrepair/config/cl20190816_metadata_timeseries_LBR2.tsv',
+                stringsAsFactors=F, key='ID')
+
+# meta.dt[,ID:=gsub('-', 'no', ID)]
+# meta.dt[,guide:=gsub('-', 'no', guide)]
+
+indir = '/DATA/projects/DSBrepair/data/cl20200107_timeseries_LBR2/'
+
+
+mutations.dt = meta.dt[, fread(paste0(indir, 'indelPCR_counts/', ID, '.count.table'),
+                               stringsAsFactors=F,
+                               colClasses=c(rep('character', 3), 'integer'),
+                               col.names=c('barcode', 'type', 'indel',
+                                           'count')), by=ID]
+mutations.dt[type=='ssODN', indel:='SSTR']
+
+## barcode integrated at 2 sites
+mutations.dt = mutations.dt[!barcode%in%c('TTGCTCTTCCGCAGAT', 'GGTACCAACTCCAGCA'), ]
+
+
+mutation_merge.dt = merge(mutations.dt, meta.dt[PCR_type=='indelPCR', ], by='ID')
+
+bc_data = data.table(barcode=clone5$barcode, clone=5)
+bc_data[barcode=='CTCTTAATCGCTGCC', barcode:='GCTCTTAATCGCTGCC']
+
+mut_selection = merge(mutation_merge.dt, bc_data, by=c('barcode', 'clone'))
+
+key_vec = c('barcode', 'clone', 'indel', 'series',
+            'plasmid', 'shield', 'time')
+
+indel.dt = mut_selection[, list(count=sum(count)),
+                                by=key_vec]
+
+
+sum_count.dt =  indel.dt[series%in%c('TimeSeries2_a', 'TimeSeries2-3_b') &
+                         plasmid=='LBR2',
+                         list(count=sum(count[indel%in%c('1','-7')])),
+                              by=c('barcode', 'clone', 'series',
+                                        'plasmid', 'shield', 'time')]
+sum_count.dt[,thresh:=all(count>20),
+             by=c('barcode', 'clone',
+                  'plasmid', 'shield', 'time')]
+
+pdf('cl20200309_indel_count.pdf', useDingbats=F, height=10, width=15)
+ggplot(sum_count.dt, aes(x=time, y=log10(count), color=series, shape=thresh)) +
+    geom_point() +
+    facet_wrap(~barcode)
+
+dev.off()
+
+
+sum_count_SSTR.dt =  mut_selection[series%in%c('TimeSeries3_a', 'TimeSeries4_a') &
+                                   plasmid=='LBR2',
+                                   list(count=sum(count[indel%in%c('SSTR','-7')])),
+                                        by=c('barcode', 'clone', 'series',
+                                             'plasmid', 'shield', 'time')]
+
+sum_count_SSTR.dt[,thresh:=all(count>20),
+                  by=c('barcode', 'clone',
+                       'plasmid', 'shield', 'time')]
+
+pdf('cl20200309_indel_count_SSTR.pdf', useDingbats=F, height=10, width=15)
+ggplot(sum_count_SSTR.dt, aes(x=time, y=log10(count), color=series, shape=thresh)) +
+    geom_point() +
+    facet_wrap(~barcode)
+
+dev.off()
+
+
+norm_count.dt = mut_selection[series%in%c('TimeSeries2_a', 'TimeSeries2-3_b') &
+                              plasmid=='LBR2',
+                              list(barcode=barcode,
+                                   indel=indel,
+                                   norm=count/sum(count)),
+                              by=c('clone', 'series',
+                                   'plasmid', 'shield', 'time')]
+
+
+
+mean_count.dt = norm_count.dt[, list(mean_norm=mean(norm)),
+                              by=c('clone', 'barcode', 'indel',
+                                   'plasmid', 'shield', 'time')]
+
+
+ratio.dt = mean_count.dt[indel%in%c('1', '-7'),
+                         list(MMEJ_MMEJNHEJ=mean_norm[indel=='-7']/sum(mean_norm)),
+                         by=c('clone', 'barcode', 'plasmid', 'shield', 'time')]
+
+
+
+
+ratio_merge = merge(ratio.dt, unique(sum_count.dt[, c('clone', 'plasmid',
+                                                     'barcode', 'shield',
+                                                     'time', 'thresh')]),
+                   by=c('barcode', 'clone', 'plasmid', 'shield', 'time'))
+
+
+
+model_dt <- function(dt, yname){
+    y = unlist(dt[,..yname,with=T])
+    x = dt$time
+    model = 'y~a * exp(-b * exp(-c * x))'
+    start_list = list(a=20, b=10, c=0.1)
+    test = tryCatch(nls(formula(model),
+                        start=start_list,
+                        data=data.frame(x,y)),
+                    error=function(x){return(NULL)})
+    if (!is.null(test)){
+        return(as.list(c(coef(test), rse=summary(test)$sigma)))
+    }
+}
+
+ratio_merge[, group:=domain_cast[barcode,'group']]
+
+gompertz.dt = ratio_merge[thresh==T, model_dt(.SD, 'MMEJ_MMEJNHEJ'),
+                          by=c('barcode', 'clone', 'plasmid', 'shield')]
+
+
+
+t_gomp = seq(0,ratio_merge[,max(time)], by=0.1)
+
+
+gompertz_fit.dt = gompertz.dt[, list(time=t_gomp,
+                                     MMEJ_MMEJNHEJ = a * exp(-b * exp(-c * t_gomp))),
+                              by=c('barcode', 'clone', 'plasmid', 'shield')]
+
+
+pdf('cl20200420_gompertz_MMEJ_MMEJNHEJ.pdf', useDingbats=F)
+ggplot(gompertz_fit.dt, aes(x=time, y=MMEJ_MMEJNHEJ, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge[thresh==T, ]) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+dev.off()
+
+
+
+pdf('cl20200420_gompertz_MMEJ_MMEJNHEJ_split.pdf', useDingbats=F, width=15,
+    height=10)
+ggplot(gompertz_fit.dt, aes(x=time, y=MMEJ_MMEJNHEJ, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge[thresh==T, ]) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1) +
+    facet_wrap(~barcode)
+
+dev.off()
+
+
+```
+
+
+
+```{r}
+
+
+ratio.dt = indel.dt[series%in%c('TimeSeries2_a', 'TimeSeries2-3_b') &
+                         plasmid=='LBR2' & indel%in%c('1', '-7'),
+                         list(MMEJ_MMEJNHEJ=count[indel=='-7']/sum(count)),
+                         by=c('clone', 'barcode', 'plasmid', 'series', 'shield',
+                              'time')]
+
+mean_ratio.dt = ratio.dt[, list(MMEJ_MMEJNHEJ=mean(MMEJ_MMEJNHEJ)),
+                         by=c('clone', 'barcode', 'plasmid', 'shield',
+                              'time')]
+
+
+ratio_merge = merge(mean_ratio.dt, unique(sum_count.dt[, c('clone', 'plasmid',
+                                                           'barcode', 'shield',
+                                                           'time', 'thresh')]),
+                   by=c('barcode', 'clone', 'plasmid', 'shield', 'time'))
+
+ratio_merge[, group:=domain_cast[barcode,'group']]
+
+model_dt <- function(dt, yname){
+    y = unlist(dt[,..yname,with=T])
+    x = dt$time
+    model = 'y~a * exp(-b * exp(-c * x))'
+    start_list = list(a=20, b=10, c=0.1)
+    test = tryCatch(nls(formula(model),
+                        start=start_list,
+                        data=data.frame(x,y)),
+                    error=function(x){return(NULL)})
+    if (!is.null(test)){
+        return(as.list(c(coef(test), rse=summary(test)$sigma)))
+    }
+}
+
+gompertz.dt = ratio_merge[thresh==T, model_dt(.SD, 'MMEJ_MMEJNHEJ'),
+                          by=c('barcode', 'clone', 'plasmid', 'shield', 'group')]
+
+t_gomp = seq(0,ratio_merge[,max(time)], by=0.1)
+
+
+gompertz_fit.dt = gompertz.dt[, list(time=t_gomp,
+                                     MMEJ_MMEJNHEJ = a * exp(-b * exp(-c * t_gomp))),
+                              by=c('barcode', 'clone', 'plasmid', 'shield', 'group')]
+
+
+
+pdf('cl20200420_gompertz_MMEJ_MMEJNHEJ_no_norm.pdf', useDingbats=F, height=5)
+ggplot(gompertz_fit.dt, aes(x=time, y=MMEJ_MMEJNHEJ, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge[thresh==T, ]) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+ggplot(gompertz_fit.dt, aes(x=time, y=MMEJ_MMEJNHEJ, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge[thresh==T, ]) +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+
+ggplot(gompertz_fit.dt, aes(x=time, y=MMEJ_MMEJNHEJ, group=barcode,
+                            color=group)) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+
+ggplot(gompertz_fit.dt, aes(x=time, y=MMEJ_MMEJNHEJ, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge[thresh==T, ], size=0.5) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+dev.off()
+
+
+
+pdf('cl20200420_gompertz_MMEJ_MMEJNHEJ_split_no_norm.pdf', useDingbats=F, width=15,
+    height=10)
+ggplot(gompertz_fit.dt, aes(x=time, y=MMEJ_MMEJNHEJ, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge[thresh==T, ]) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1) +
+    facet_wrap(~barcode)
+
+dev.off()
+
+
+title_vec = c('a'='a: asymptote (top of the slope)',
+              'b'='b: displacement along x-axis (delay)',
+              'c'='c: growth rate')
+
+gompertz.dt[!group%in%c('iDomain', 'late_replicating-LAD-H3K9me2',
+                             'H3K27me3'), group:='other']
+
+pdf('cl20200420_gompertz_MMEJ_MMEJNHEJ_variables.pdf', useDingbats=F, width=3.5,
+    height=10)
+
+plot_list = lapply(c('a','b','c'), function(x){
+    ggplot(gompertz.dt, aes_string(x='group', y=x, color='group')) +
+        geom_quasirandom() +
+        ggtitle(title_vec[x]) +
+        theme_bw()
+    })
+
+do.call(grid.arrange, plot_list)
+
+plot_list = lapply(c('a','b','c'), function(x){
+    ggplot(gompertz.dt, aes_string(x='group', y=x, color='group')) +
+        geom_quasirandom() +
+        ggtitle(title_vec[x]) +
+        theme_bw() +
+        expand_limits(y=0)
+    })
+
+do.call(grid.arrange, plot_list)
+
+
+plot_list = lapply(c('a','b','c'), function(x){
+    ggplot(gompertz.dt, aes_string(x='1', y=x, color='group')) +
+        geom_quasirandom() +
+        ggtitle(x) +
+        theme_bw() +
+        ggtitle(title_vec[x]) +
+        expand_limits(y=0)
+    })
+
+do.call(grid.arrange, plot_list)
+
+dev.off()
+
+```
+
+
+
+```{r}
+
+
+ratio_SSTR.dt = indel.dt[series%in%c('TimeSeries3_a', 'TimeSeries4_a') &
+                         plasmid=='LBR2' & indel%in%c('SSTR', '-7'),
+                         list(MMEJ_MMEJSSTR=count[indel=='-7']/sum(count)),
+                         by=c('clone', 'barcode', 'plasmid', 'series', 'shield',
+                              'time')]
+
+mean_ratio_SSTR.dt = ratio_SSTR.dt[, list(MMEJ_MMEJSSTR=mean(MMEJ_MMEJSSTR)),
+                                   by=c('clone', 'barcode', 'plasmid', 'shield',
+                                   'time')]
+
+
+ratio_merge_SSTR = merge(mean_ratio_SSTR.dt,
+                         unique(sum_count_SSTR.dt[, c('clone', 'plasmid',
+                                                      'barcode', 'shield',
+                                                      'time', 'thresh')]),
+                         by=c('barcode', 'clone', 'plasmid', 'shield', 'time'))
+
+ratio_merge_SSTR[, group:=domain_cast[barcode,'group']]
+
+
+gompertz_SSTR.dt = ratio_merge_SSTR[thresh==T, model_dt(.SD, 'MMEJ_MMEJSSTR'),
+                                    by=c('barcode', 'clone', 'plasmid',
+                                         'shield', 'group')]
+
+t_gomp = seq(0,ratio_merge[,max(time)], by=0.1)
+
+
+gompertz_fit_SSTR.dt = gompertz_SSTR.dt[, list(time=t_gomp,
+                                        MMEJ_MMEJSSTR = a * exp(-b * exp(-c * t_gomp))),
+                                        by=c('barcode', 'clone', 'plasmid',
+                                             'shield', 'group')]
+
+
+
+pdf('cl20200420_gompertz_MMEJ_MMEJSSTR_no_norm.pdf', useDingbats=F, height=5)
+ggplot(gompertz_fit_SSTR.dt, aes(x=time, y=MMEJ_MMEJSSTR, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge_SSTR[thresh==T, ]) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+ggplot(gompertz_fit_SSTR.dt, aes(x=time, y=MMEJ_MMEJSSTR, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge_SSTR[thresh==T, ]) +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+
+ggplot(gompertz_fit_SSTR.dt, aes(x=time, y=MMEJ_MMEJSSTR, group=barcode,
+                            color=group)) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+
+ggplot(gompertz_fit_SSTR.dt, aes(x=time, y=MMEJ_MMEJSSTR, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge_SSTR[thresh==T, ], size=0.5) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1)
+
+dev.off()
+
+
+
+pdf('cl20200420_gompertz_MMEJ_MMEJSSTR_split_no_norm.pdf', useDingbats=F, width=15,
+    height=10)
+ggplot(gompertz_fit_SSTR.dt, aes(x=time, y=MMEJ_MMEJSSTR, group=barcode,
+                            color=group)) +
+    geom_point(data=ratio_merge_SSTR[thresh==T, ]) +
+    geom_line() +
+    theme_bw() +
+    theme(aspect.ratio=1) +
+    facet_wrap(~barcode)
+
+dev.off()
+
+
+gompertz_SSTR.dt[!group%in%c('iDomain', 'late_replicating-LAD-H3K9me2',
+                             'H3K27me3'), group:='other']
+
+pdf('cl20200420_gompertz_MMEJ_MMEJSSTR_variables.pdf', useDingbats=F, width=3.5,
+    height=10)
+
+plot_list = lapply(c('a','b','c'), function(x){
+    ggplot(gompertz_SSTR.dt, aes_string(x='group', y=x, color='group')) +
+        geom_quasirandom() +
+        ggtitle(title_vec[x]) +
+        theme_bw()
+    })
+
+do.call(grid.arrange, plot_list)
+
+plot_list = lapply(c('a','b','c'), function(x){
+    ggplot(gompertz_SSTR.dt, aes_string(x='group', y=x, color='group')) +
+        geom_quasirandom() +
+        ggtitle(title_vec[x]) +
+        theme_bw() +
+        expand_limits(y=0)
+    })
+
+do.call(grid.arrange, plot_list)
+
+
+plot_list = lapply(c('a','b','c'), function(x){
+    ggplot(gompertz_SSTR.dt, aes_string(x='1', y=x, color='group')) +
+        geom_quasirandom() +
+        ggtitle(x) +
+        theme_bw() +
+        ggtitle(title_vec[x]) +
+        expand_limits(y=0)
+    })
+
+do.call(grid.arrange, plot_list)
+
+dev.off()
+
+
+saveRDS(domain_cast, '../data/R/cl20200420_domains_clone5.RDS')
+```

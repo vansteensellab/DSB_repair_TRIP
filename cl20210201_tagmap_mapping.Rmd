@@ -1,0 +1,1043 @@
+
+## putative transposition events in TRIP data
+
+For our DSB-repair TRIP we were asked for revisions whether transposition events
+were common. Transpositions after break repair in our system can happen in two
+different ways:
+1. transpositions between two reporters. This could happen if two reporters are
+   broken simultaneously in the same cell.
+2. transpositions with random element
+
+
+```
+scripts/insilico_integrate.py -s data/cl20200914_clone5_barcodes.tsv \
+                              -n center \
+                              -r /DATA/usr/c.leemans/data/hg38/hg38_1-22_XYM.fa \
+                              -i data/pRS004_TRIP_construct_insert.fa \
+                              --chain-to data/cl20200914_tagmap_indel/insilico_clone5.to.chain \
+                              --chain-from data/cl20200914_tagmap_indel/insilico_clone5.from.chain \
+                              -g data/cl20200914_tagmap_indel/insilico_clone5.fa \
+                              -f data/cl20200914_tagmap_indel/insilico_clone5.gff \
+                              -o TTAA --ori fwd
+
+```
+
+
+
+## read trimming
+We are mainly interested in finding the location of the sequence after the break
+site. The part before this is mainly to obtain the barcode.
+
+
+
+```bash
+mkdir data/cl20201116_tagmap_indel2/
+mkdir data/cl20201116_tagmap_indel2/repaired
+mkdir data/cl20201116_tagmap_indel2/temp
+mkdir data/cl20201116_tagmap_indel2/trimmed
+
+for r2 in $(ls data/cl20201029_tagmap_indel2/parsed/indelPCR.*.2.fastq.gz)
+do
+    r1=${r2/.2./.1.}
+    out1=${r1/1029/1116}
+    out2=${r2/1029/1116}
+
+    zcat $r2 | awk '{
+        c=NR%4
+        switch (c){
+            case 0:
+                if (length(l2) > 113){
+                    print l1
+                    print l2
+                    print l3
+                    print $0
+                }
+            case 1:
+                l1 = $0
+            case 2:
+                l2 = $0
+            case 3:
+                l3 = $0
+        }
+    }' | gzip - > ${out2/parsed/temp}
+
+    zcat ${out2/parsed/temp} | \
+        fastx_trimmer -z -f 76 \
+            -o ${out2/parsed/trimmed}
+
+    repair.sh in1=$r1 \
+              in2=${out2/parsed/trimmed} \
+              out1=${out1/parsed/repaired} \
+              out2=${out2/parsed/repaired} \
+              outs=singletons.fq overwrite=true repair
+
+done
+rm -rf data/cl20201116_tagmap_indel2/temp
+rm -rf data/cl20201116_tagmap_indel2/trimmed
+
+```
+
+## Aligning reads
+
+```bash
+mkdir data/cl20201116_tagmap_indel2/mapped
+mkdir data/cl20201116_tagmap_indel2/filtered
+
+for r2 in $(ls data/cl20201116_tagmap_indel2/repaired/indelPCR.*.2.fastq.gz)
+do
+    r1=${r2/.2./.1.}
+    bam=${r2/.2.fastq.gz/.bam}
+    bowtie2 -p 30 -x data/cl20200914_tagmap_indel/insilico_clone5 \
+        -X 2000 -1 $r1 -2 $r2 | samtools sort - > ${bam/repaired/mapped}
+
+    samtools index -@ 5 ${bam/repaired/mapped}
+
+
+    sambamba view -f bam -F 'proper_pair' ${bam/repaired/mapped} \
+        > ${bam/repaired/filtered}
+
+    samtools index -@ 5 ${bam/repaired/filtered}
+done
+
+```
+
+
+```bash
+
+gff2bed.sh -n ID -g data/cl20200914_tagmap_indel/insilico_clone5.gff \
+    | sort -k1,1 -k2,2n > data/cl20201116_tagmap_indel2/insilico_clone5.bed
+
+mkdir data/cl20201116_tagmap_indel2/intersect
+mkdir data/cl20201116_tagmap_indel2/rearangements
+
+for rep in $(ls data/cl20201116_tagmap_indel2/filtered/indelPCR.*.bam)
+do
+    out=${rep/filtered/intersect}
+
+    samtools sort -@20 -n $rep | \
+        bamToBed -bedpe -mate1 -i /dev/stdin | \
+        awk -vOFS='\t' '{
+            if ($2 < $5){
+                start=$2
+            } else{
+                start=$5
+            } if ($3 > $6){
+                end=$3
+            } else{
+                end=$6
+            }
+            if ($1==$4){
+                print $1, start, end, $7, $8, $10
+        }}' | sort -k1,1 -k2n -k3n > ${out/.bam/.bed}
+
+        awk -F '[\t|]' -vOFS='\t' 'function abs(v) {return v < 0 ? -v : v}
+        {
+            if (NR==1){
+                seq=$1
+                start=$2
+                end=$3
+                arr[$5]++
+                mapq=$6
+                strand=$7
+            }
+            else if ($1==seq && abs($2-start) < 3 && abs($3-end) < 3){
+                arr[$5]++
+                mapq=$6>mapq?$6:mapq
+            } else{
+                max=0
+                for (bc in arr){
+                    if (max < arr[bc]){
+                        barcode = bc
+                        max = arr[bc]
+                    }
+                }
+                delete arr
+                print seq, start, end, barcode, mapq, strand
+                seq=$1
+                start=$2
+                end=$3
+                arr[$5]++
+                mapq=$6
+                strand=$7
+            }
+        } END{
+            max=0
+            for (bc in arr){
+                if (max < arr[bc]){
+                    barcode = bc
+                    max = arr[bc]
+                }
+                print seq, start, end, barcode, mapq, strand
+            }
+        }' ${out/.bam/.bed} > ${out/.bam/.demulti.bed}
+
+    bedtools intersect -loj -wb\
+                       -a ${out/.bam/.bed} \
+                       -b data/cl20201116_tagmap_indel2/insilico_clone5.bed \
+        > ${out/.bam/.txt}
+
+    bedtools intersect -loj -wb\
+                       -a ${out/.bam/.demulti.bed} \
+                       -b data/cl20201116_tagmap_indel2/insilico_clone5.bed \
+        > ${out/.bam/.demulti.txt}
+
+done
+
+```
+
+```bash
+mkdir data/cl20201116_tagmap_indel2/rearangements
+
+for rep in $(ls data/cl20201116_tagmap_indel2/intersect/indelPCR.*.demulti.txt)
+do
+    out=${rep/intersect/rearangements}
+
+    sed 's/pat1://' $rep | \
+        awk -F'\t' -vOFS='\t' '{
+            if ($7=="." && $4!=""){
+                print $1, $2, $3, $4, $5, $6
+            }
+        }' > ${out/.demulti.txt/.bed}
+
+    bedtools closest -d -a ${out/.demulti.txt/.bed} \
+                     -b data/cl20201116_tagmap_indel2/insilico_clone5.bed \
+        > ${out/.demulti/}
+
+done
+```
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(ggbeeswarm)
+library(rtracklayer)
+library(gridExtra)
+library(knitr)
+
+
+parse_bam <- function(bam){
+    mock_vec = rep('.', 21)
+    keep_vec = c('read_id', 'cigar', 'edit_distance',
+                 'mismatch_nuc', 'alignment_score')
+    mock_vec[c(1,6,12,13,15)] = keep_vec
+    mock_line = paste(mock_vec, collapse='\t')
+    bam_dt = fread(cmd=paste0('echo "', mock_line,
+                              '"; sambamba view -F "first_of_pair" ',
+                              bam), sep='\t',
+                   select = keep_vec, fill=TRUE, key='read_id')
+
+    bam_dt[,alignment_score:= as.numeric(gsub('.*:i:', '', alignment_score))]
+    bam_dt[,edit_distance:= as.numeric(gsub('.*:i:', '', edit_distance))]
+    bam_dt[,mismatch_nuc:= gsub('.*:i:', '', mismatch_nuc)]
+
+    return(bam_dt[,c('read_id', 'cigar', 'alignment_score', 'edit_distance',
+                     'mismatch_nuc'), with=F])
+}
+
+
+parse_input <- function(ID){
+    dt = fread(paste0('/DATA/projects/DSBrepair/data/cl20201116_tagmap_indel2/',
+                      'intersect/indelPCR.', ID, '.txt'),
+               col.names=c('seqnames', 'start', 'end', 'read_id',
+                           'mapq', 'strand', 'r_seqname', 'r_start', 'r_end',
+                           'r_barcode', 'r_dot', 'r_strand'),
+               colClasses=list('character'=10:12))
+
+
+    bam_dt = parse_bam(paste0('/DATA/projects/DSBrepair/data/',
+                              'cl20201116_tagmap_indel2/mapped/indelPCR.',
+                              ID, '.bam'))
+
+    dt[,frag_barcode := gsub('.*:','',read_id)]
+    bam_dt[,frag_barcode := gsub('.*:','',read_id)]
+    merge(bam_dt, dt, by='read_id')
+}
+
+meta_dt = fread('/DATA/projects/DSBrepair/config/cl20201029_tagmap_indel2_meta_trip.txt')
+
+frag_dt = meta_dt[grep('_e$',ID), parse_input(ID), by=ID]
+
+frag_dt[,frag_barcode := gsub('.*:','',read_id)]
+
+clone_dt = fread('/DATA/projects/DSBrepair/data/cl20200914_tagmap_indel/insilico_clone5.bed',
+                 col.names=c('seqnames', 'start', 'end', 'barcode', 'score', 'strand'))
+
+domain_dt = readRDS('/DATA/projects/DSBrepair/data/R/cl20200623_clones_chip_domains.RDS')
+setkey(domain_dt, 'bc')
+
+frag_dt = frag_dt[frag_barcode%in%clone_dt$barcode, ]
+
+
+```
+
+## Do we see evidence of translocations between reporters
+
+```{r}
+
+count_matched <- function(match_vec){
+    t = as.list(table(match_vec)[c('TRUE','FALSE')])
+    t[is.na(t)] = as.integer(0)
+    names(t) = c('matched', 'unmatched')
+    return(t)
+}
+
+bc_match = frag_dt[mapq>30 & r_dot=='.',
+                   count_matched(frag_barcode==r_barcode), by='ID']
+
+print(bc_match[, unmatched/(matched+unmatched), by=ID])
+
+
+bc_match = frag_dt[mapq > 30 & alignment_score > -5 & r_dot=='.',
+                   count_matched(frag_barcode==r_barcode), by='ID']
+
+print(bc_match[, unmatched/(matched+unmatched), by=ID])
+
+bc_match = frag_dt[mapq>30 & alignment_score > -5 & end-start>400 & r_dot=='.',
+                   count_matched(frag_barcode==r_barcode), by='ID']
+
+print(bc_match[, unmatched/(matched+unmatched), by=ID])
+
+
+```
+
+**conclusion:**
+With the most stringent filtering still > 40% of barcodes found in reads
+do not match the expected reporter location. This is such a high percentage
+it is likely to have a technical reason. Maybe there is some barcode bias
+that could tell us something more.
+
+
+```{r}
+
+frag_merge = merge(frag_dt[grep('_e$',ID), ], meta_dt, by='ID')
+
+
+bc_match = frag_merge[mapq>30 & alignment_score > -5 & r_dot=='.' & end-start>400,
+                      count_matched(frag_barcode==r_barcode),
+                      by=c('ID', 'plasmid', 'r_barcode')]
+bc_ratio_r = bc_match[, list('ratio'=mean(unmatched/(matched+unmatched)),
+                             'of'='reporter'),
+                      by=c('plasmid', 'r_barcode')]
+
+bc_match = frag_merge[mapq>30 & alignment_score > -5 & r_dot=='.' & end-start>400,
+                   count_matched(frag_barcode==r_barcode),
+                   by=c('ID', 'plasmid', 'frag_barcode')]
+bc_ratio_frag = bc_match[, list('ratio'=mean(unmatched/(matched+unmatched)),
+                                'of'='fragment'),
+                         by=c('plasmid', 'frag_barcode')]
+
+colnames(bc_ratio_r)[2] = colnames(bc_ratio_frag)[2] = 'barcode'
+bc_ratio = rbind(bc_ratio_r, bc_ratio_frag)
+
+bc_ratio[,domain:= domain_dt[barcode, 'group']]
+bc_ratio[,LAD:= ifelse(grepl('LAD',domain), 'LAD', 'iLAD')]
+
+ggplot(bc_ratio, aes(x=paste(LAD, plasmid), y=ratio, color=LAD)) +
+    geom_quasirandom() +
+    theme_bw() +
+    ggtitle('ratio of UNmatched barcodes per barcode in:') +
+    theme(axis.text.x=element_text(angle=-90)) +
+    facet_wrap(~of)
+
+```
+**conclusion:**
+Two barcodes specifically are found generally all over the place.
+This again can be technical, or because these two are cut more often.
+All reporters show around the same ratio of relocated barcodes.
+
+
+## Do we see evidence of translocations of reporters with other sides in the genome
+
+```{r}
+
+match_count = frag_dt[,count_matched(r_dot=='.'), by='ID']
+
+print(match_count[, unmatched/(matched+unmatched), by='ID'])
+
+
+
+match_count = frag_dt[edit_distance < 5, count_matched(r_dot=='.'), by='ID']
+
+print(match_count[, unmatched/(matched+unmatched), by='ID'])
+
+
+match_count = frag_dt[alignment_score > -5, count_matched(r_dot=='.'), by='ID']
+
+print(match_count[, unmatched/(matched+unmatched), by='ID'])
+
+
+match_count = frag_dt[end-start > 200, count_matched(r_dot=='.'), by='ID']
+
+print(match_count[, unmatched/(matched+unmatched), by='ID'])
+
+
+match_count = frag_dt[end-start > 400, count_matched(r_dot=='.'), by='ID']
+
+print(match_count[, unmatched/(matched+unmatched), by='ID'])
+
+
+
+match_count = frag_dt[!(seqnames=='chr1' & start > 225424583 &
+                        end < 225426496),
+                      count_matched(r_dot=='.'), by='ID']
+
+print(match_count[, unmatched/(matched+unmatched), by='ID'])
+
+
+
+```
+**conclusion:**
+Around 1-2% of mapped fragments do not overlap with a reporter site.
+If you filter for alignment score (long reads with good alignment),
+or for edit distance (good alignment with low number of differences),
+this percentage stays the same.
+
+This could indicate that there are translocations. However, without a control
+this would be difficult to say.
+
+```{r}
+
+
+match_count = frag_merge[alignment_score > -5, count_matched(r_dot=='.'),
+                         by=c('ID', 'plasmid', 'frag_barcode')]
+match_count[is.na(unmatched),unmatched:=0]
+
+match_ratio = match_count[, list('ratio'=mean(unmatched/(matched+unmatched))),
+                          by=c('plasmid', 'frag_barcode')]
+
+match_ratio[,domain:= domain_dt[frag_barcode, 'group']]
+match_ratio[,LAD:= ifelse(grepl('LAD',domain), 'LAD', 'iLAD')]
+
+ggplot(match_ratio, aes(x=paste(LAD, plasmid), y=ratio, color=domain)) +
+    geom_quasirandom() +
+    theme_bw() +
+    ggtitle('ratio mapping to different part of genome') +
+    theme(axis.text.x=element_text(angle=-90))
+```
+**conclusion:**
+barcodes in LADs seem to have less fragments mapping to positions other than
+reporter fragments. This could mean that there is indeed a small percentage of
+transposition events with other parts of the genome and that this is likely
+to happen in sites that are cut less often.
+
+
+```{r}
+
+
+parse_indel <- function(ID){
+    raw_indel = fread(paste0('/DATA/projects/DSBrepair/data/',
+                             'cl20201029_tagmap_indel2/indelPCR/',
+                             ID, '.raw.table'),
+                  stringsAsFactors=F, header=T)
+
+    colnames(raw_indel) = c('barcode', 'call', 'indel', 'seq2')
+
+    barcode_table = fread(cmd=paste0('zcat /DATA/projects/DSBrepair/data/',
+                                     'cl20201029_tagmap_indel2/parsed/',
+                                     'indelPCR.', ID,
+                                     '.barcode.txt.gz'),
+                          stringsAsFactors=F, header=T, sep='\t')
+
+
+    raw_table = cbind(raw_indel[seq2!='', ],
+                      ID=barcode_table[sequence_2!='',ID])
+    raw_table[, read_id := gsub(' .*', paste0('|pat1:', barcode), ID),
+              by='ID']
+    setkey(raw_table, 'read_id')
+    return(raw_table)
+}
+raw_table = meta_dt[grep('_e$',ID), parse_indel(ID), by=ID]
+
+raw_table[,mutation_state:=call]
+raw_table[call%in%c('ins', 'del'), mutation_state:='indel']
+
+frag_merge = merge(frag_dt, raw_table[,c('read_id', 'mutation_state', 'indel')],
+                   by='read_id')
+
+
+```
+
+
+```{r}
+
+bc_match = frag_merge[mapq>30 & alignment_score > -5 & r_dot=='.' & end-start>400,
+                      count_matched(frag_barcode==r_barcode),
+                      by=c('ID', 'r_barcode', 'mutation_state')]
+bc_ratio_r = bc_match[, list('ratio'=mean(unmatched/(matched+unmatched)),
+                             'of'='reporter'),
+                      by=c('r_barcode', 'mutation_state')]
+
+bc_match = frag_merge[mapq>30 & alignment_score > -5 & r_dot=='.' & end-start>400,
+                      count_matched(frag_barcode==r_barcode),
+                      by=c('ID', 'frag_barcode', 'mutation_state')]
+bc_ratio_frag = bc_match[, list('ratio'=mean(unmatched/(matched+unmatched)),
+                                'of'='fragment'),
+                         by=c('frag_barcode', 'mutation_state')]
+
+colnames(bc_ratio_r)[1] = colnames(bc_ratio_frag)[1] = 'barcode'
+bc_ratio = rbind(bc_ratio_r, bc_ratio_frag)
+
+bc_ratio[,domain:= domain_dt[barcode, 'group']]
+bc_ratio[,LAD:= grepl('LAD',domain)]
+colnames(bc_ratio)[1] = 'barcode'
+
+
+ggplot(bc_ratio[mutation_state!='wt_point_mut', ],
+       aes(x=LAD, y=ratio, color=domain)) +
+    geom_quasirandom() +
+    theme_bw() +
+    xlab('ratio unmatched') +
+    facet_wrap(~of + mutation_state)
+
+
+```
+
+
+
+```{r}
+match_count = frag_merge[alignment_score > -5, count_matched(r_dot=='.'),
+                         by=c('rep', 'frag_barcode', 'mutation_state')]
+
+match_ratio = match_count[, list('ratio'=mean(unmatched/(matched+unmatched))),
+                          by=c('frag_barcode', 'mutation_state')]
+
+match_ratio[,domain:= domain_dt[frag_barcode, 'group']]
+match_ratio[,LAD:= grepl('LAD', domain)]
+
+ggplot(match_ratio[mutation_state!='wt_point_mut', ],
+       aes(x=LAD, y=ratio, color=domain)) +
+    geom_quasirandom() +
+    xlab('ratio unmatched') +
+    theme_bw() +
+    facet_wrap(~mutation_state)
+
+
+```
+
+**conclusion:**
+~75% of the "not clear" calls align with other places in the genome
+
+
+## Where can we find putative translocations
+
+
+```{r}
+
+parse_dist <- function(ID){
+    dt = fread(paste0('/DATA/projects/DSBrepair/data/cl20201116_tagmap_indel2/',
+                      'rearangements/indelPCR.', ID, '.txt'),
+               col.names=c('seqnames', 'start', 'end', 'frag_barcode',
+                           'mapq', 'strand', 'r_seqname', 'r_start', 'r_end',
+                           'r_barcode', 'r_dot', 'r_strand', 'dist'),
+               colClasses=list('character'=10:12))
+
+    return(dt)
+}
+
+meta_dt = fread('/DATA/projects/DSBrepair/config/cl20201029_tagmap_indel2_meta_trip.txt')
+
+dist_dt = meta_dt[grep('_e$',ID), parse_dist(ID), by=ID]
+dist_dt = dist_dt[frag_barcode%in%clone_dt$barcode, ]
+
+
+total_events = dist_dt[,list(total=length(dist)),by='ID']
+native_LBR = dist_dt[seqnames=='chr1' &
+                     end > 225401503 &
+                     start < 225428855, list(LBR=length(dist)), by='ID']
+
+big_deletions = dist_dt[frag_barcode==r_barcode &
+                        ifelse(r_strand=='-',
+                               strand=='+' & start > r_end & start - r_end < 250000,
+                               strand=='-' & end < r_start & r_start - end < 250000),
+                        list(big_del=length(dist)), by='ID']
+
+
+count_merge = Reduce(function(x,y) merge(x,y, by='ID', all.x=T, all.y=T),
+                     list(total_events, native_LBR, big_deletions))
+count_merge[is.na(count_merge)] <- 0
+
+count_merge[,other:=total-LBR-big_del]
+kable(count_merge)
+
+
+
+same_barcode = dist_dt[frag_barcode==r_barcode,
+                       list(same=length(dist)), by='ID']
+same_merge = merge(total_events, same_barcode, by='ID', all.x=T, all.y=T)
+same_merge[is.na(same_merge)] <- 0
+same_merge[,not_same:=total - same]
+kable(same_merge)
+```
+
+
+```{r}
+
+dist_dt[,native_LBR := FALSE]
+dist_dt[seqnames=='chr1' & end > 225401503 & start < 225428855,
+        native_LBR := TRUE, by=c('ID', 'frag_barcode')]
+
+dist_dt[, big_del := FALSE]
+dist_dt[frag_barcode==r_barcode &
+                        ifelse(r_strand=='-',
+                               strand=='+' & start > r_end & start - r_end < 250000,
+                               strand=='-' & end < r_start & r_start - end < 250000),
+                        big_del := TRUE, by=c('ID', 'frag_barcode')]
+
+
+native_LBR = dist_dt[native_LBR==T, list(LBR=length(dist)), by=c('ID', 'frag_barcode')]
+
+big_deletions = dist_dt[big_del==T, list(big_del=length(dist)), by=c('ID', 'frag_barcode')]
+
+total_events = dist_dt[,list(total=length(dist)),by=c('ID', 'frag_barcode')]
+
+
+count_merge = Reduce(function(x,y) merge(x,y, by=c('ID', 'frag_barcode'), all.x=T, all.y=T),
+                     list(total_events, native_LBR, big_deletions))
+count_merge[is.na(count_merge)] <- 0
+count_merge[,other:=total-LBR-big_del]
+kable(count_merge)
+
+big_del_cast = dcast(big_deletions, frag_barcode ~ ID, value.var='big_del')
+big_del_cast[is.na(big_del_cast)] <- 0
+big_del_sum = big_del_cast[,list(big_del=sum(.SD)),by='frag_barcode']
+kable(big_del_sum)
+
+LBR_cast = dcast(native_LBR, frag_barcode ~ ID, value.var='LBR')
+LBR_cast[is.na(LBR_cast)] <- 0
+LBR_sum = LBR_cast[,list(LBR=sum(.SD)),by='frag_barcode']
+kable(LBR_sum)
+
+
+lad_hmm = fread('/DATA/scratch/usr/c.leemans/data/tracks/hg38/K562_LMNB1-5kb-combined_HMM.txt',
+                col.names=c('seqnames', 'start', 'end', 'lad'))
+
+lad_gr = makeGRangesFromDataFrame(lad_hmm[lad=='AD',])
+
+
+other_dt = dist_dt[!big_del & !native_LBR,]
+
+frag_gr = makeGRangesFromDataFrame(other_dt)
+
+other_dt[,frag_lad := 'iLAD']
+other_dt[,pos_lad := 'iLAD']
+
+o = findOverlaps(frag_gr, lad_gr)
+other_dt[queryHits(o), frag_lad :='LAD']
+
+
+pos_gr = makeGRangesFromDataFrame(other_dt, seqnames.field='r_seqname',
+                                  start.field='r_start', end.field='r_end')
+
+o = findOverlaps(pos_gr, lad_gr)
+other_dt[queryHits(o), pos_lad :='LAD']
+
+other_dt[grepl('LBR2', ID), table(frag_lad, pos_lad)]
+
+other_dt[(dist > 10000000 | r_barcode != frag_barcode | dist==-1) &
+         grepl('LBR2',ID), table(frag_lad, pos_lad)]
+kable(other_dt)
+```
+
+
+
+```{r}
+count_merge[,LBR2:=grepl('LBR2', ID)]
+rep_sum = count_merge[,as.list(colSums(.SD[,-'ID'])),by=c('frag_barcode', 'LBR2')]
+
+rep_sum[,group:=domain_dt[frag_barcode,group]]
+
+
+
+pdf('cl20210201_rearrangement_count.pdf', useDingbats=F, height=15)
+title_vec=c('total'='total rearrangements and big deletions',
+            'LBR'='rearrangements with native LBR locus',
+            'big_del'='large deletions',
+            'other'='other rearrangements with genome')
+plot_list = lapply(c('total', 'LBR', 'big_del', 'other'), function(y){
+    ggplot(rep_sum, aes_string(x='group', y=y, color='LBR2')) +
+        theme_bw() +
+        ggtitle(title_vec[y]) +
+        geom_quasirandom(dodge.width=0.5) +
+        theme(axis.text.x = element_text(angle = 90)) +
+        scale_y_continuous(minor_breaks = seq(1, 30, 1),
+                           breaks = seq(0, 30, 5))
+})
+do.call(grid.arrange, plot_list)
+
+dev.off()
+
+
+```
+
+
+
+```{r}
+
+colnames(clone_dt) = c('pos_seq', 'pos_start', 'pos_end',
+                       'barcode', 'pos_score', 'pos_strand')
+
+dist_pos = merge(clone_dt, dist_dt, by.x='barcode', by.y='frag_barcode')
+
+dist_pos[,frag_start:=ifelse(strand=='+', start, end)]
+dist_pos[,pos_center:=ifelse(pos_strand=='+',
+                             pos_start+412,
+                             pos_end-412)]
+
+dist_pos[,dist:=ifelse(pos_seq==seqnames,
+                       ifelse(pos_strand=='+',
+                              pos_center-frag_start,
+                              frag_start-pos_center),
+                       Inf)]
+
+max_bin = dist_pos[is.finite(dist), ceiling(max(log10(abs(dist)),na.rm=T))]
+
+
+breaks = c(-10^c(9:3), 0, 10^c(3:9), Inf)
+
+labels = c('-1000Mb:-100Mb', '-100Mb:-10Mb', '10Mb-1Mb', '-1Mb:-100kb',
+           '-100kb:-10kb', '-10kb:-1kb', '-1kb:0kb', '0kb:1kb',
+           '1kb:10kb', '10kb:100kb', '100kb:1Mb', '1Mb-10Mb',
+           '10Mb:100Mb', '100Mb-1000Mb', 'other chromosome')
+
+dist_pos[,dist_cut:= cut(dist, breaks=breaks, labels=labels)]
+dist_pos[,native_LBR := factor(native_LBR, levels=c(TRUE, FALSE))]
+
+group_breaks = c(-10^9, 0, 10^9, Inf)
+group_labels = c('inversions', 'deletions', 'trans')
+dist_pos[,dist_group:=cut(dist, breaks=group_breaks, labels=group_labels)]
+
+pdf('cl20210201_distance_hist.pdf', useDingbats=F, height=5)
+ggplot(dist_pos[grepl('LBR2', ID), ], aes(x=dist_cut, fill=native_LBR)) +
+    geom_histogram(stat='count') +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    facet_grid(~dist_group, scales="free_x", space="free_x")
+
+ggplot(dist_pos[grepl('LBR2', ID), ], aes(x=1, fill=native_LBR)) +
+    geom_histogram(stat='count') +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    facet_grid(~is.finite(dist), scales="free_x", space="free_x")
+
+dev.off()
+
+dist_count = dist_pos[grepl('LBR2',ID),
+                      list(count=length(dist)),
+                      by=c('native_LBR', 'dist_group')]
+dist_count[,ratio:=count/sum(count)]
+
+
+match_count = frag_merge[alignment_score > -5,
+                         count_matched(r_dot=='.'),
+                         by=c('ID', 'plasmid')]
+match_count[is.na(unmatched),unmatched:=0]
+
+match_ratio = match_count[, list('ratio'=mean(unmatched/(matched+unmatched))),
+                          by=c('plasmid')]
+
+match_ratio[plasmid=='LBR2', 'ratio'] * dist_count[native_LBR==T & dist_group=='trans', 'ratio'] / 4 * 6.8
+
+```
+
+
+
+```{r}
+
+clone5 = readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS")[,-'barcode']
+colnames(clone5)[colnames(clone5)=='ID'] = 'barcode'
+
+
+parse_indel_count <- function(ID){
+    fread(paste0('/DATA/projects/DSBrepair/data/cl20201029_tagmap_indel2/',
+                 'indelPCR_counts/', ID, '.count.table'))
+}
+
+indel_table = meta_dt[grep('_e$',ID), parse_indel_count(ID), by=ID][call!='not_clear',]
+
+indel_vec = c('0'='wt', '1'='NHEJ', '-7'='MMEJ')
+
+indel_table[,indel_type:=ifelse(indel%in%names(indel_vec),
+                                indel_vec[as.character(indel)], 'other')]
+
+indel_count = indel_table[,list(count=sum(count)), by=c('barcode', 'ID', 'indel_type')]
+
+indel_count[,ratio:=count/sum(count), by=c('barcode', 'ID')]
+
+indel_merge = merge(indel_count, meta_dt, by='ID')
+
+indel_ratio = indel_merge[,list(ratio=mean(ratio)), by=c('barcode', 'plasmid', 'indel_type')]
+
+indel_ratio_clone5 = merge(clone5, indel_ratio, by='barcode')
+
+colnames(match_ratio)[1:3] = c('plasmid', 'barcode', 'rearrangements')
+indel_ratio_merge = merge(indel_ratio_clone5, match_ratio[,1:3],
+                          by=c('barcode', 'plasmid'))
+
+indel_ratio_merge[,corrected_ratio:=ratio * (1-rearrangements)]
+
+indel_ratio_cast = dcast(indel_ratio_merge,
+                         barcode + group + IPR + plasmid + rearrangements ~ indel_type,
+                         value.var='corrected_ratio')
+
+indel_ratio_cast[is.na(indel_ratio_cast)] <- 0
+
+indel_ratio_melt = melt(indel_ratio_cast,
+                        measure.vars=c('MMEJ', 'NHEJ', 'other', 'wt',
+                                       'rearrangements'),
+                        variable.name='indel_type', value.name='ratio')
+
+IPR_order = indel_ratio_melt[plasmid=='LBR2' & indel_type=='wt',
+                             IPR[order(ratio)]]
+
+indel_ratio_melt[,IPR:=factor(IPR, levels=IPR_order)]
+
+
+pdf('cl20201201_indel_hist.pdf', useDingbats=F)
+
+ggplot(indel_ratio_melt, aes(x=IPR, y=ratio, fill=indel_type)) +
+    theme_bw() +
+    geom_bar(stat='identity') +
+    facet_wrap(~plasmid)
+
+dev.off()
+
+
+saveRDS(indel_ratio_melt, '/DATA/projects/DSBrepair/data/R/cl20201129_indel_ratio_rearrangements.RDS')
+```
+
+
+```{r}
+
+indel_count = indel_table[,list(count=sum(count)), by=c('ID', 'indel_type')]
+
+indel_count[,ratio:=count/sum(count), by=c('ID')]
+
+indel_merge = merge(indel_count, meta_dt, by='ID')
+
+indel_ratio = indel_merge[,list(ratio=mean(ratio)), by=c('plasmid', 'indel_type')]
+
+frag_merge = merge(frag_dt[grep('_e$',ID), ], meta_dt, by='ID')
+
+
+match_count = frag_merge[alignment_score > -5, count_matched(r_dot=='.'),
+                         by=c('ID', 'plasmid')]
+
+match_ratio = match_count[, list('rearrangements'=mean(unmatched/(matched+unmatched))),
+                          by=c('plasmid')]
+
+indel_ratio_merge = merge(indel_ratio, match_ratio,
+                          by=c('plasmid'))
+
+indel_ratio_merge[,corrected_ratio:=ratio * (1-rearrangements)]
+
+indel_ratio_cast = dcast(indel_ratio_merge,
+                         plasmid + rearrangements ~ indel_type,
+                         value.var='corrected_ratio')
+
+indel_ratio_cast[is.na(indel_ratio_cast)] <- 0
+
+indel_ratio_melt = melt(indel_ratio_cast,
+                        measure.vars=c('MMEJ', 'NHEJ', 'other', 'wt',
+                                       'rearrangements'),
+                        variable.name='indel_type', value.name='ratio')
+
+indel_ratio_melt[,indel_type := factor(indel_type,
+                                       levels=c('wt', 'other', 'MMEJ',
+                                                'NHEJ', 'rearrangements'))]
+
+pdf('cl20201201_indel_global_hist.pdf', useDingbats=F)
+
+ggplot(indel_ratio_melt, aes(x=plasmid, y=ratio, fill=indel_type)) +
+    theme_bw() +
+    geom_bar(stat='identity')
+
+dev.off()
+
+
+```
+
+```{r}
+parse_demulti <- function(ID){
+    dt = fread(paste0('/DATA/projects/DSBrepair/data/cl20201116_tagmap_indel2/',
+                  'intersect/indelPCR.', ID, '.demulti.txt'),
+           col.names=c('seqnames', 'start', 'end', 'read_id',
+                       'mapq', 'strand', 'r_seqname', 'r_start', 'r_end',
+                       'r_barcode', 'r_dot', 'r_strand'),
+           colClasses=list('character'=10:12))
+
+    dt[,frag_barcode:= gsub('pat1:', '', read_id)]
+    return(dt)
+}
+
+demulti_dt = meta_dt[grep('_e$',ID), parse_demulti(ID), by=ID][frag_barcode%in%clone5$barcode,]
+
+
+overlap_dt = merge(demulti_dt[mapq>10 & r_start>0, ], meta_dt, by='ID')
+
+bc_locations = overlap_dt[,data.table(unique(cbind(r_seqname, r_start,r_end, r_barcode)))]
+
+bc_gr = makeGRangesFromDataFrame(bc_locations)
+
+
+
+
+
+bc_locations[, distance:=NaN]
+
+dist_dt = as.data.table(distanceToNearest(bc_gr))
+bc_locations[dist_dt$queryHits, distance:=dist_dt$distance]
+setkey(bc_locations, 'r_barcode')
+
+bc_match = overlap_dt[end-start>400,
+                      count_matched(frag_barcode==r_barcode),
+                      by=c('ID', 'plasmid', 'r_barcode')]
+bc_ratio_r = bc_match[, list('ratio'=mean(unmatched/(matched+unmatched)),
+                             'of'='reporter'),
+                      by=c('plasmid', 'r_barcode')]
+
+bc_match = overlap_dt[end-start>400,
+                   count_matched(frag_barcode==r_barcode),
+                   by=c('ID', 'plasmid', 'frag_barcode')]
+bc_ratio_frag = bc_match[, list('ratio'=mean(unmatched/(matched+unmatched)),
+                                'of'='fragment'),
+                         by=c('plasmid', 'frag_barcode')]
+
+colnames(bc_ratio_r)[2] = colnames(bc_ratio_frag)[2] = 'barcode'
+bc_ratio = rbind(bc_ratio_r, bc_ratio_frag)
+
+bc_merge = merge(bc_ratio, clone5, by='barcode')
+bc_merge[,LAD:= ifelse(grepl('LAD',group), 'LAD', 'iLAD')]
+
+
+
+bc_merge[, distance:=bc_locations[barcode, 'distance']]
+
+bc_merge[,dist_type:= ifelse(is.nan(distance), 'only in chromosome',
+                            ifelse(distance < 10^7, ' < 10Mb',
+                                   '>= 10Mb'))]
+pdf('cl20201201_unique_between_IPR_rearrangements.pdf', useDingbats=F)
+
+ggplot(bc_merge, aes(x=paste(LAD, plasmid), y=ratio, color=dist_type)) +
+    geom_quasirandom() +
+    theme_bw() +
+    ylim(0,1) +
+    ggtitle('ratio of UNmatched barcodes per barcode in:') +
+    theme(axis.text.x=element_text(angle=-90)) +
+    facet_wrap(~of)
+
+
+bc_cast = dcast(bc_merge, group + IPR + LAD + of + barcode ~ plasmid,
+                value.var='ratio')
+
+bc_cast[, distance:=bc_locations[barcode, 'distance']]
+
+bc_cast[,dist_type:= ifelse(is.nan(distance), 'only in chromosome',
+                            ifelse(distance < 10^7, ' < 10Mb',
+                                   '>= 10Mb'))]
+ggplot(bc_cast, aes(x=LAD, y=LBR2-GFP, color=dist_type)) +
+    geom_quasirandom() +
+    theme_bw() +
+    ylim(-0.05,1) +
+    ggtitle('ratio of UNmatched barcodes per barcode in:') +
+    theme(axis.text.x=element_text(angle=-90)) +
+    facet_wrap(~of)
+dev.off()
+```
+
+
+
+```{r}
+
+
+clone5 = readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS")[,-'barcode']
+colnames(clone5)[colnames(clone5)=='ID'] = 'barcode'
+
+
+parse_indel_count <- function(ID){
+    fread(paste0('/DATA/projects/DSBrepair/data/cl20201029_tagmap_indel2/',
+                 'indelPCR_counts/', ID, '.count.table'))
+}
+
+indel_table = meta_dt[grep('_e$',ID), parse_indel_count(ID), by=ID][call!='not_clear',]
+
+
+indel_count = indel_table[indel%in%-20:2,
+                          list(count=sum(count)), by=c('barcode', 'ID', 'indel')]
+
+indel_count[,ratio:=count/sum(count), by=c('barcode', 'ID')]
+
+
+indel_merge = merge(indel_count, clone5, by='barcode')
+
+pdf('cl20201201_indel_plot.pdf', useDingbats=F, height=20)
+ggplot(indel_merge, aes(x=indel, y=ratio, color=group)) +
+    theme_bw() +
+    geom_quasirandom() +
+    facet_wrap(~ID, nrow=6)
+dev.off()
+```
+
+```{r}
+parse_demulti <- function(ID){
+    dt = fread(paste0('/DATA/projects/DSBrepair/data/cl20201116_tagmap_indel2/',
+                  'intersect/indelPCR.', ID, '.demulti.txt'),
+           col.names=c('seqnames', 'start', 'end', 'read_id',
+                       'mapq', 'strand', 'r_seqname', 'r_start', 'r_end',
+                       'r_barcode', 'r_dot', 'r_strand'),
+           colClasses=list('character'=10:12))
+
+    dt[,frag_barcode:= gsub('pat1:', '', read_id)]
+    return(dt)
+}
+
+demulti_dt = meta_dt[grep('_e$',ID), parse_demulti(ID), by=ID][frag_barcode%in%clone5$barcode,]
+
+
+overlap_dt = merge(demulti_dt[mapq>10 & r_start>0, ], meta_dt, by='ID')
+
+bc_locations = overlap_dt[,data.table(unique(cbind(r_seqname, r_start,r_end, r_barcode)))]
+
+bc_gr = makeGRangesFromDataFrame(bc_locations, keep.extra.columns=T)
+
+distanceToBarcodes <- function(dt){
+    this_gr = makeGRangesFromDataFrame(dt)
+    dist = as.data.table(distanceToNearest(bc_gr, this_gr))
+    res = list(other_barcode=bc_gr$r_barcode[dist$queryHits], distance=dist$distance)
+    return(res)
+}
+
+
+dist_between = bc_locations[, distanceToBarcodes(.SD) ,by='r_barcode']
+
+overlap_merge = merge(overlap_dt[end-start>400,], dist_between, all.x=T,
+                      by.x=c('frag_barcode', 'r_barcode'),
+                      by.y=c('other_barcode', 'r_barcode'))
+
+
+overlap_merge[,dist_type:= ifelse(is.na(distance), 'other chromosome',
+                                  ifelse(distance==0, 'same',
+                                         ifelse(distance < 10^7, ' < 10Mb',
+                                                '>= 10Mb')))]
+
+overlap_count = overlap_merge[, list(count=nrow(.SD)),
+                              by=c('plasmid', 'dist_type', 'r_barcode')]
+
+overlap_count[, ratio:=count/sum(count),
+              by=c('plasmid', 'r_barcode')]
+
+
+
+
+pdf('cl20201201_unique_between_IPR_rearrangements_separate.pdf', useDingbats=F)
+
+ggplot(overlap_count[dist_type!='same' & r_barcode%in%clone5$barcode,],
+       aes(x=r_barcode, y=ratio, fill=dist_type)) +
+    geom_bar(stat='identity') +
+    theme_bw() +
+    ylim(0,1) +
+    ggtitle('ratio of UNmatched barcodes per barcode location') +
+    theme(axis.text.x=element_text(angle=-90)) +
+    facet_wrap(~ plasmid)
+dev.off()
+
+```
