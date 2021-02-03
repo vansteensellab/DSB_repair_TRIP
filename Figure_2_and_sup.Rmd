@@ -50,10 +50,11 @@ library(tidyr)
 library(ggpmisc)
 library(pheatmap)
 library(RColorBrewer)
+library(broom)
 library(report)
 
 
-in.dir.date = 20201129
+in.dir.date = 20210202
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 
@@ -203,8 +204,8 @@ filter(trip_tib_mut, drug == "-", mutation != "ssODN") %>%  distinct(barcode, ne
 
 ## Panel 2C
 ```{r Fig2C individual barcodes, fig.height=5, fig.width=7}
-set.seed(13)
-# set.seed(11)
+set.seed(1)
+
 barcodes <- trip_tib_mut %>% filter(drug == "-", nexp > 4, cells > 1000) %>% pull(barcode) %>% unique()
 barcodeset <- sample(barcodes, 6)
 
@@ -212,7 +213,7 @@ NHEJratio <- filter(trip_tib, barcode %in% barcodeset, exp_pool == "mean_RSTP2_2
   distinct(barcode, .keep_all = T) %>% 
   dplyr::select(barcode, MMEJ_MMEJNHEJ, efficiency) %>% 
   mutate(label_efficiency = paste0("Total indel rate = ", round(efficiency*100, 1),"%"), 
-         label_ratio = paste0("MMEJ:NHEJ balance = ", round(MMEJ_MMEJNHEJ, 2)),
+         label_ratio = paste0("MMEJ/(MMEJ+NHEJ) = ", round(MMEJ_MMEJNHEJ, 2)),
          label = paste0("IPR ", seq(1, 6)))
 
 bc_chrom_loc <- filter(analysis.mapped.integrations.df, barcode %in% barcodeset) %>% 
@@ -235,8 +236,6 @@ p <- ggplot(bc_mut_tib,
   geom_bar(stat = "identity", aes(fill = color)) + 
   scale_fill_manual("legend", values = colores) + 
   theme_bw() +
-  # geom_text(aes(x = 7, y = .7, label = label_efficiency)) +
-  # geom_text(aes(x = 7, y = .6, label = label_ratio)) +
   scale_y_continuous(name="frequency") +
   scale_x_discrete(name="indel size", breaks = c("<-15", -7, 0, 1, ">3")) +
   geom_errorbar(aes(ymin=freq-sd_freq, ymax=freq+sd_freq), width=.2,
@@ -337,7 +336,7 @@ trip_tib_mut_all_selection %>%
   scale_x_discrete(name="Indel size", breaks = c(seq(-120, 15, by = 10)))
 
 trip_tib_mut_all_selection %>% 
-  filter(mutation != "ssODN", drug == "-") %>% 
+  filter(mutation!= "ssODN", drug == "-") %>% 
   group_by(mutation, color) %>% 
   dplyr::summarise(median = 100*median(freq)) %>%
   ggplot(., aes(mutation, median, fill = color, width=1)) + 
@@ -352,7 +351,40 @@ trip_tib_mut_all_selection %>%
   filter(mutation != "ssODN", drug == "-") %>% 
   group_by(mutation, color) %>% 
   dplyr::summarise(median = median(freq)) %>% filter(median > 0.015)
+
 ```
+
+```{r}
+deletions.chr = as.character(-120:-1)
+
+deletions_decay = trip_tib_mut_all_selection %>% 
+  filter(mutation %in% deletions.chr, drug == "-") %>%  # keep only the deletions
+  distinct(barcode, mutation, freq) %>%
+  filter(!mutation %in% c("-22", "-14", "-7")) %>% # remove obvious outliers (MMEJ)
+  mutate(mutation = abs(as.numeric(levels(mutation))[mutation])) %>% 
+  group_by(mutation) %>%
+  dplyr::summarise(meanfreq = mean(freq))
+
+# qplot(t, y, data = df, colour = sensor)
+qplot(mutation, meanfreq, data = deletions_decay)
+
+
+# fit <- nls(y ~ SSasymp(t, yf, y0, log_alpha), data = sensor1)
+# fit <- nls(meanfreq ~ SSasymp(mutation, yf, y0, log_alpha), data = deletions_decay)
+# fit
+
+
+fit <- nls(meanfreq ~ SSbiexp(mutation, A1, lrc1, A2, lrc2), data = deletions_decay)
+# A1*exp(-exp(lrc1)*x)+A2*exp(-exp(lrc2)*x)
+#  0.008595*e(-2.761203  0.015845 -0.532655 
+# 0.008595*exp(-exp(-2.761203)*x)+0.015845*exp(-exp(-0.532655)*x)
+fit
+
+# qplot(t, y, data = augment(fit)) + geom_line(aes(y = .fitted))
+qplot(mutation, meanfreq, data = augment(fit)) + geom_line(aes(y = .fitted))
+
+```
+
 
 ### Figure legend
 *(c)* Log10 meadian frequency of all the barcodes for all the indels from (2b). 
@@ -608,120 +640,7 @@ trip_tib_mut_filt %>% dplyr::summarise(mean = mean(freq))
 
 ## Panel S2D
 
-```{r FigS2D qPCRs with siRNA, fig.height=4, fig.width=8}
-
-### TO DO ####
-siRNA_cts = read.table("rs20201123_siRNA_qPCR_mean_dCT.txt", header = T, stringsAsFactors = F)
-
-# Calculate dCt
-siRNA_dcts = siRNA_cts %>% mutate(dPolQ = PolQ-TBP,
-                                  dCtIP = CtIP-TBP,
-                                  dRad51 = Rad51-TBP,
-                                  dBRCA1 = BRCA1-TBP,
-                                  dBRCA2 = BRCA2-TBP,
-                                  dLigIV = LigIV-TBP)
-
-pw_dcts = filter(siRNA_dcts, exp == "pathway_confirmation")
-HR_dcts = filter(siRNA_dcts, exp == "HR")
-viab_dcts = filter(siRNA_dcts, exp == "cell_viability")
-
-
-## Calculate FC of Rad51 in cell viability assays:
-viab_dcts = filter(siRNA_dcts, exp == "HR", siRNA %in% c("siNT", "siRad51"), replicate != "rep1c") %>% 
-  mutate(exp = "cell_viability",
-         replicate = ifelse(replicate == "rep2", "rep6", "rep5")) %>%
-  rbind(., viab_dcts) %>%
-  dplyr::select(siRNA, replicate, TBP, PolQ, Rad51, dPolQ, dRad51)
-
-viab_ddcts = viab_dcts %>% 
-  dplyr::select(siRNA, replicate, dRad51) %>% 
-  pivot_wider(names_from = siRNA,
-              values_from = dRad51) %>% 
-  mutate(ddRad51 = siRad51-siNT)
-
-viab_ddcts %>% mutate(fcRad51 = 2.115449462^-(ddRad51))
-
-viab_ddcts %>% mutate(fcRad51 = 2.115449462^-(ddRad51)) %>% summarise(mean = mean(fcRad51),
-                                                            sd = sd(fcRad51))
-
-
-## Calculate FC of mRNA's in pathway check experiment.
-pw_ddcts = pw_dcts %>% 
-  filter(!siRNA %in% c("clone5", "siBRCA1"), replicate %in% c("rep1", "rep2")) %>% # the repeat of the Rad51 qPCRs are not needed
-  dplyr::select(siRNA, replicate, dPolQ, dCtIP, dRad51, dBRCA1, dBRCA2, dLigIV) %>% 
-  pivot_longer(!c(replicate, siRNA), names_to = "gene", values_to = "dCt") %>%
-  pivot_wider(names_from = siRNA,
-              values_from = c(dCt)) %>% 
-                mutate(ddPolQ = siPolQ-siNT,
-                        ddCtIP = siCtIP-siNT,
-                        ddRad51 = siRad51-siNT,
-                        ddLigIV = siLigIV-siNT)
-
-pw_fc = pw_ddcts %>% mutate(siPolQ = 2.022524101^-(ddPolQ),
-                    siLigIV = 2.144610222^-(ddLigIV),
-                    siCtIP = 2.209780385^-(ddCtIP),
-                    siRad51 = 2.115449462^-(ddRad51)) %>% 
-  group_by(gene) %>% dplyr::select(replicate, gene, siPolQ, siLigIV, siCtIP, siRad51) %>% 
-  pivot_longer(!c(gene, replicate), names_to = "siRNA", values_to = "fc")
-
-ggplot(pw_fc, aes(gene, fc, fill = replicate)) + 
-  geom_bar(stat = "identity", position  = "dodge") + 
-  facet_grid(. ~ siRNA) + 
-  theme_bw() +
-  scale_fill_manual(values = c("rep1" = "black", "rep2" = "gray"))
-
-
-## Calculate FC of mRNA's in pathway check experiment.
-HR_ddcts = HR_dcts %>% 
-  # filter(replicate %in% c("rep1", "rep2")) %>%
-  dplyr::select(siRNA, replicate, dPolQ, dCtIP, dRad51, dBRCA1, dBRCA2) %>% 
-  filter(siRNA != "siCtIP") %>% # CtIP siRNA was too diluted and removed also from seq data
-  pivot_longer(!c(replicate, siRNA), names_to = "gene", values_to = "dCt") %>%
-  pivot_wider(names_from = siRNA,
-              values_from = c(dCt)) %>% 
-  mutate(ddPolQ = siPolQ-siNT,
-         ddRad51 = siRad51-siNT,
-         ddBRCA1 = siBRCA1-siNT,
-         ddBRCA2 = siBRCA2-siNT)
-
-# HR_dcts %>% mutate(fcRad51 = 2^-(ddRad51))
-
-HR_fc = HR_ddcts %>% mutate(siPolQ = 2.022524101^-(ddPolQ),
-                    siRad51 = 2.115449462^-(ddRad51),
-                    siBRCA1 = 2.21038195^-(ddBRCA1),
-                    siBRCA2 = 2.104251081^-(ddBRCA2)) %>% 
-  group_by(gene) %>% dplyr::select(replicate, gene, siPolQ, siRad51, siBRCA1, siBRCA2) %>% 
-  pivot_longer(!c(gene, replicate), names_to = "siRNA", values_to = "fc") %>%
-  filter(!(replicate == "rep1" & siRNA == "siBRCA1")) # remove the odd siBRCA1 sample
-
-
-# Remove the siRNA experiment with BRCA1 that didn't work with the other replicate that worked
-HR_fc_filtered = HR_fc %>% 
-  filter(!(replicate == "rep1c" & 
-             siRNA %in% c("siRad51", "siPolQ")), 
-         !(replicate == "rep1" & 
-             siRNA == "siBRCA1")) %>% 
-  mutate(replicate = ifelse(replicate == "rep1c", "rep1", replicate),
-         siRNA = factor(siRNA, levels = c("siPolQ", 
-                                             "siRad51", "siBRCA1", "siBRCA2")),
-         gene = factor(gene, levels = c("dPolQ",  "dCtIP",  
-                                         "dRad51", "dBRCA1", "dBRCA2")))
-
-HR_fc_filtered %>% 
-  # filter(siRNA == "siBRCA1") %>%
-  ggplot(., aes(gene, fc, fill = replicate)) + 
-  geom_bar(stat = "identity", position  = "dodge") + 
-  facet_grid(. ~ siRNA) + 
-  theme_bw() +
-  scale_fill_manual(values = c("rep1" = "black", "rep2" = "gray"))
-
-```
-
-### Figure legend
-*(d)* 
-
-## Panel S2E
-```{r FigS2E pathway contribution with siRNA, fig.height=5, fig.width=6}
+```{r FigS2D pathways with siRNA, fig.height=5, fig.width=7}
 siRNAexps <- trip_tib_mut_all %>% 
   filter(replicate %in% c('mean'), 
          !siRNA %in% c("-", "siLigIV"), 
@@ -748,114 +667,40 @@ exp_order <- c("siNT",
 trip_lbr2_siRNA <- trip_tib_2000 %>%
   filter(exp_pool %in% c(siRNAexps))
 
-trip_mut_lbr2_siRNA <- trip_tib_mut_2000 %>%
-  filter(exp_pool %in% c(siRNAexps))
-
 trip_mut_lbr2_all_siRNA <- trip_tib_mut_all %>%
   filter(exp_pool %in% c(siRNAexps))
 
-trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA %>%
-  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>%
-  distinct(barcode, siRNA, pathway, drug, .keep_all = TRUE)
-
-
-trip_lbr2_siRNA_pathways$pathway <- factor(trip_lbr2_siRNA_pathways$pathway, 
-                                           levels=c("other_indels", "SSTR", "MMEJ", "NHEJ"))
-trip_lbr2_siRNA_pathways$siRNA <- factor(trip_lbr2_siRNA_pathways$siRNA, levels=exp_order)
-trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA_pathways[!is.na(trip_lbr2_siRNA_pathways$ratios), ]
-
-pathway_contribution <- trip_lbr2_siRNA_pathways %>% 
-  group_by(siRNA, pathway, drug) %>% 
-  dplyr::summarise(pathway_contr = mean(ratios))
-
-p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, order = pathway)) +
-  geom_bar(stat = "identity", position = "fill")  +
-  theme_bw(base_size = 16)
-p + scale_fill_manual("legend", values = colori) +
-  scale_x_discrete(labels=c("siNT" = "Non-targeting siRNA",
-                            "siCtIP" = "siRBBP8",
-                            "siPolQ" = "siPOLQ",
-                            "siRad51" = "siRAD51")) +
-  labs(x = element_blank(),
-       y = "abundance") +
-  facet_grid(~ drug)
-```
-
-### Figure legend
-*(e)* Total abundance of each pathway with the different siRNA treatments over all barcodes in clone5. Red = NHEJ (+1), blue = MMEJ (-7), green = SSTR (ssODN), black = all other indels. Left is DMSO treatment, right NU7441 treatment (1uM). 
-
-
-## Panel S2F
-
-```{r FigS2F pathways with siRNA, fig.height=5, fig.width=7}
-trip_mut_lbr2_siRNA_diff <- trip_mut_lbr2_all_siRNA  %>%
-  dplyr::select("barcode", "mutation", "freq", "color", "siRNA", "drug") %>%
-  spread(siRNA, freq) %>%
-  na.omit() %>%
-  gather(siCtIP, siNT, siPolQ, siRad51, key = "siRNA", value = "freq") %>%
-  mutate(mutation = as.character(mutation)) %>% dplyr::select(-barcode, -color) %>% group_by(mutation)
-  
-
-trip_mut_lbr2_siRNA_diff$siRNA <- factor(trip_mut_lbr2_siRNA_diff$siRNA, levels=exp_order)
-
-mutations <- trip_mut_lbr2_siRNA_diff %>% 
-  group_by(mutation) %>% 
-  dplyr::summarise(count = n()) %>% 
-  filter(count > 20) %>% 
-  pull(mutation)
-
-# for(i in c("siPolQ",
-#            "siCtIP",
-#            "siRad51")) {
-#   pvals <- trip_mut_lbr2_siRNA_diff %>%
-#     filter(mutation %in% mutations,
-#            siRNA %in% c("siNT", i),
-#            drug == "DMSO") %>%
-#     do(broom::tidy(t.test(freq ~ siRNA, data = ., paired = T))) %>%
-#     ungroup() %>%
-#     mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
-#     dplyr::select(mutation,conf.low, conf.high, p.value, p.adj) %>%
-#     arrange(p.adj)
-#   print(i)
-#   print(pvals)
-#   pvals %>% 
-#     filter(mutation %in% c("-7", "1", "ssODN", "0")) %>% 
-#     print()
-# }
-# 
-# 
-# trip_mut_lbr2_all_siRNA %>%
-#   filter(mutation %in% c("-7", "1", "ssODN", "0"), drug == "DMSO") %>%
-#   group_by(mutation, siRNA) %>%
-#   dplyr::select(barcode, mutation, siRNA, freq) %>%
-#   ggplot(., aes(siRNA, freq, color = mutation)) +
-#   geom_quasirandom(dodge.width=1) +
-#   theme_bw(base_size = 16) + 
-#   scale_color_manual("legend", values = colora) +
-#   facet_grid(~ mutation)
-
+# trip_mut_lbr2_all_siRNA_sep <- trip_tib_mut_all %>%
+#   filter(exp_pool %in% c(siRNAexps_sep))
 
 ## Ratios
-
-
 trip_tib_mut_filt <- trip_mut_lbr2_all_siRNA %>%
-  filter(mutation %in% mutations, drug == "DMSO") %>%
-  group_by(mutation, siRNA) %>%
-  dplyr::select(barcode, mutation, siRNA, freq) %>% 
-  spread(siRNA, freq) %>%
-  mutate(ratio_siCtIP = log2(siCtIP / siNT),
+  filter(drug == "DMSO") %>%
+  dplyr::select("barcode",  "mutation", "freq", "color", "siRNA", "drug") %>%
+  pivot_wider(names_from = siRNA, values_from = freq) %>%
+  filter(complete.cases(.)) %>% 
+   mutate(ratio_siCtIP = log2(siCtIP / siNT),
          ratio_siPolQ = log2(siPolQ / siNT),
          ratio_siRad51 = log2(siRad51 / siNT)) %>% 
-  filter(!is.na(siNT))  %>% 
   gather(ratio_siCtIP, 
          ratio_siPolQ, 
          ratio_siRad51, 
          key = "si_ratio", 
          value = "ratio") %>% 
-  dplyr::select(barcode, mutation, si_ratio, ratio)
+  distinct(barcode, mutation, si_ratio, ratio) %>% 
+  group_by(mutation)
+ 
+
+mutations = trip_tib_mut_filt %>%
+  group_by(mutation) %>%
+  dplyr::count(mutation) %>%
+  filter(n > 30) %>% 
+  pull(mutation) %>% 
+  as.character()
 
 repair_pvals = data.frame()
 
+# Calculate single sample t.test statistics per siRNA per mutation and store it in a df.
 for(i in c("ratio_siCtIP",
            "ratio_siPolQ",
            "ratio_siRad51")) {
@@ -897,18 +742,139 @@ ggplot(filter(trip_tib_mut_filt,
   scale_x_discrete(labels=c("ratio_siCtIP" = "siRBBP8",
                             "ratio_siPolQ" = "siPOLQ",
                             "ratio_siRad51" = "siRAD51")) +
-  geom_text(data = repair_pvals, aes(x = si_ratio, y = 2.4 , label = p.star), size = 6)
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  geom_text(data = repair_pvals, aes(x = si_ratio, y = 2.3 , label = p.star), size = 6)
+
+
 ```
 
 ### Figure legend
-*(f)* Log2 ratio of the frequencies for -7 deletion, +1 insertion and ssODN integration in siRNA treatment over non-target siRNA control treatment. Adjusted p-values for target versus non-target indel frequency fold change (H=0). *** = adjusted p. value < 0.001, **** = adjusted p. value < 0.0001. 
+*(d)* Log2 ratio of the frequencies for -7 deletion, +1 insertion and ssODN integration in siRNA treatment over non-target siRNA control treatment. Adjusted p-values for target versus non-target indel frequency fold change (H=0). *** = adjusted p. value < 0.001, **** = adjusted p. value < 0.0001. 
 
+
+## Panel S2E
+```{r FigS2E pathway contribution with siRNA, fig.height=5, fig.width=6}
+trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>%
+  distinct(barcode, siRNA, pathway, drug, .keep_all = TRUE)
+
+
+trip_lbr2_siRNA_pathways$pathway <- factor(trip_lbr2_siRNA_pathways$pathway, 
+                                           levels=c("other_indels", "SSTR", "MMEJ", "NHEJ"))
+trip_lbr2_siRNA_pathways$siRNA <- factor(trip_lbr2_siRNA_pathways$siRNA, levels=exp_order)
+trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA_pathways[!is.na(trip_lbr2_siRNA_pathways$ratios), ]
+
+pathway_contribution <- trip_lbr2_siRNA_pathways %>% 
+  group_by(siRNA, pathway, drug) %>% 
+  dplyr::summarise(pathway_contr = mean(ratios))
+
+p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, order = pathway)) +
+  geom_bar(stat = "identity", position = "fill")  +
+  theme_bw(base_size = 16)
+p + scale_fill_manual("legend", values = colori) +
+  scale_x_discrete(labels=c("siNT" = "Non-targeting siRNA",
+                            "siCtIP" = "siRBBP8",
+                            "siPolQ" = "siPOLQ",
+                            "siRad51" = "siRAD51")) +
+  labs(x = element_blank(),
+       y = "abundance") +
+  facet_grid(~ drug)
+```
+
+### Figure legend
+*(e)* ) Relative contribution of each pathway for all 19 barcodes in clone 5 combined, after indicated siRNA treatments. Red: +1 insertion (NHEJ); blue: -7 deletion (MMEJ); green: +2 insertion due to SSTR; black: other indels. Right-hand panel shows data from cells treated with NU7441 (1 µM); left-hand panel shows data from control cells.  
+
+
+## Panel S2F
+```{r FigS2F qPCRs with siRNA pathway, fig.height=4, fig.width=6}
+
+### TO DO ####
+siRNA_cts = read.table("rs20201123_siRNA_qPCR_mean_dCT.txt", header = T, stringsAsFactors = F)
+
+# Calculate dCt
+siRNA_dcts = siRNA_cts %>% mutate(dPolQ = PolQ-TBP,
+                                  dCtIP = CtIP-TBP,
+                                  dRad51 = Rad51-TBP,
+                                  dBRCA1 = BRCA1-TBP,
+                                  dBRCA2 = BRCA2-TBP,
+                                  dLigIV = LigIV-TBP)
+
+pw_dcts = filter(siRNA_dcts, exp == "pathway_confirmation")
+HR_dcts = filter(siRNA_dcts, exp == "HR")
+viab_dcts = filter(siRNA_dcts, exp == "cell_viability")
+
+
+## Calculate FC of Rad51 in cell viability assays:
+viab_dcts = filter(siRNA_dcts, exp == "HR", siRNA %in% c("siNT", "siRad51"), replicate != "rep3") %>% 
+  mutate(exp = "cell_viability",
+         replicate = ifelse(replicate == "rep2", "rep6", "rep5")) %>%
+  rbind(., viab_dcts) %>%
+  dplyr::select(siRNA, replicate, TBP, PolQ, Rad51, dPolQ, dRad51)
+
+viab_ddcts = viab_dcts %>% 
+  dplyr::select(siRNA, replicate, dRad51) %>% 
+  pivot_wider(names_from = siRNA,
+              values_from = dRad51) %>% 
+  mutate(ddRad51 = siRad51-siNT)
+
+viab_ddcts %>% mutate(fcRad51 = 2^-(ddRad51))
+
+viab_ddcts %>% mutate(fcRad51 = 2^-(ddRad51)) %>% summarise(mean = mean(fcRad51),
+                                                            sd = sd(fcRad51))
+
+## Calculate FC of mRNA's in pathway check experiment.
+pw_ddcts = pw_dcts %>% 
+  filter(!siRNA %in% c("clone5", "siBRCA1"), replicate %in% c("rep1", "rep2")) %>% # the repeat of the Rad51 qPCRs are not needed
+  dplyr::select(siRNA, replicate, dPolQ, dCtIP, dRad51, dBRCA1, dBRCA2, dLigIV) %>% 
+  pivot_longer(!c(replicate, siRNA), names_to = "gene", values_to = "dCt") %>%
+  pivot_wider(names_from = siRNA,
+              values_from = c(dCt)) %>% 
+                mutate(ddPolQ = siPolQ-siNT,
+                        ddCtIP = siCtIP-siNT,
+                        ddRad51 = siRad51-siNT,
+                        ddLigIV = siLigIV-siNT)
+
+pw_fc = pw_ddcts %>% mutate(siPolQ = 2^-(ddPolQ),
+                    siLigIV = 2^-(ddLigIV),
+                    siCtIP = 2^-(ddCtIP),
+                    siRad51 = 2^-(ddRad51)) %>% 
+  group_by(gene) %>% 
+  dplyr::select(replicate, gene, siPolQ, siLigIV, siCtIP, siRad51) %>% 
+  pivot_longer(!c(gene, replicate), names_to = "siRNA", values_to = "fc")
+
+
+pw_fc %>%
+  group_by(gene, siRNA) %>% 
+  dplyr::summarise(mean_fc = mean(fc)) %>%
+ggplot(., aes(gene, mean_fc)) + 
+  geom_bar(stat = "identity") + 
+  geom_point(aes(gene, fc),
+    data = pw_fc) +
+  facet_grid(. ~ siRNA) + 
+  theme_bw()
+  
+``` 
+
+### Figure legend
+*(f)* mRNA expression of several genes encoding DSB repair proteins after siRNA-mediated knockdown of indicated proteins, in same cells as in (E). 
 
 
 ## Panel S2G
-```{r FigS2G pathway contribution with HR siRNA, fig.height=5, fig.width=6}
+```{r FigS2G pathways with HR siRNA, fig.height=5, fig.width=7}
 siRNA_HR_exps <- trip_tib_mut_all %>% 
   filter(replicate %in% c('mean'), 
+         drug == "Shield", 
+         siRNA %in% c("siNT", "siPolQ", 
+                      "siRad51", "siBRCA1", 
+                      "siBRCA2"), 
+         cell_line == "RSTP2_clone5", 
+         plasmid == "LBR2", 
+         time == 72) %>% 
+  pull(exp_pool) %>% 
+  unique()
+
+siRNA_HR_exps_sep <- trip_tib_mut_all %>% 
+  filter(!replicate %in% c('mean'), 
          drug == "Shield", 
          siRNA %in% c("siNT", "siPolQ", 
                       "siRad51", "siBRCA1", 
@@ -929,60 +895,17 @@ exp_order <- c("siNT",
 trip_lbr2_siRNA_HR <- trip_tib_2000 %>%
   filter(exp_pool %in% c(siRNA_HR_exps))
 
-trip_mut_lbr2_siRNA_HR <- trip_tib_mut_2000 %>%
-  filter(exp_pool %in% c(siRNA_HR_exps))
-
 trip_mut_lbr2_all_siRNA_HR <- trip_tib_mut_all %>%
   filter(exp_pool %in% c(siRNA_HR_exps))
-
-
-trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA_HR %>%
-  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>%
-  distinct(barcode, siRNA, pathway, drug, .keep_all = TRUE)
-
-trip_lbr2_siRNA_pathways$pathway <- factor(trip_lbr2_siRNA_pathways$pathway, levels=c("other_indels", "SSTR", "MMEJ", "NHEJ"))
-trip_lbr2_siRNA_pathways$siRNA <- factor(trip_lbr2_siRNA_pathways$siRNA, levels=exp_order)
-trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA_pathways[!is.na(trip_lbr2_siRNA_pathways$ratios), ]
-
-pathway_contribution <- trip_lbr2_siRNA_pathways %>% group_by(siRNA, pathway, drug) %>% dplyr::summarise(pathway_contr = mean(ratios))
-
-p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, order = pathway)) +
-  geom_bar(stat = "identity", position = "fill")  +
-  theme_bw(base_size = 16)
-p + scale_fill_manual("legend", values = colori) +
-  scale_x_discrete(labels=c("ratio_siPolQ" = "siPOLQ",
-                            "ratio_siRad51" = "siRAD51",
-                            "ratio_siBRCA1" = "siBRCA1",
-                            "ratio_siBRCA2" = "siBRCA2")) +
-  labs(x = element_blank(),
-       y = "abundance") +
-  facet_grid(~ drug)
-```
-
-### Figure legend
-*(g)* 
-
-
-## Panel S2H
-
-```{r FigS2H pathways with HR siRNA, fig.height=5, fig.width=7}
-trip_mut_lbr2_siHR_diff <- trip_mut_lbr2_all_siRNA_HR  %>%
-  dplyr::select("barcode", "mutation", "freq", "color", "siRNA", "drug") %>%
-  spread(siRNA, freq) %>%
-  na.omit() %>%
-  gather(siNT, siPolQ, siRad51, siBRCA1, siBRCA2, key = "siRNA", value = "freq") %>%
-  mutate(mutation = as.character(mutation)) %>% dplyr::select(-barcode, -color) %>% group_by(mutation)
-
-
-trip_mut_lbr2_siHR_diff$siRNA <- factor(trip_mut_lbr2_siHR_diff$siRNA, levels=exp_order)
-
-mutations <- trip_mut_lbr2_siHR_diff %>% group_by(mutation) %>% dplyr::summarise(count = n()) %>% filter(count > 20) %>% pull(mutation)
+# 
+# trip_mut_lbr2_all_siRNA_HR_sep <- trip_tib_mut_all %>%
+#   filter(exp_pool %in% c(siRNA_HR_exps_sep))
 
 trip_tib_mut_filt_HR <- trip_mut_lbr2_all_siRNA_HR %>%
-  filter(mutation %in% mutations, drug == "Shield") %>%
-  group_by(mutation, siRNA) %>%
-  dplyr::select(barcode, mutation, siRNA, freq) %>% 
-  spread(siRNA, freq) %>%
+  filter(drug == "Shield") %>%
+  dplyr::select(barcode, replicate, mutation, siRNA, freq) %>% 
+  pivot_wider(names_from = siRNA, values_from = freq) %>%
+  filter(complete.cases(.)) %>% 
   mutate(ratio_siPolQ = log2(siPolQ / siNT),
          ratio_siRad51 = log2(siRad51 / siNT),
          ratio_siBRCA1 = log2(siBRCA1 / siNT),
@@ -994,7 +917,15 @@ trip_tib_mut_filt_HR <- trip_mut_lbr2_all_siRNA_HR %>%
          ratio_siBRCA2,
          key = "si_ratio", 
          value = "ratio") %>% 
-  dplyr::select(barcode, mutation, si_ratio, ratio)
+  distinct(barcode, mutation, si_ratio, ratio) %>%
+  group_by(mutation)
+
+mutations = trip_tib_mut_filt %>%
+  group_by(mutation) %>%
+  dplyr::count(mutation) %>%
+  filter(n > 30) %>% 
+  pull(mutation) %>% 
+  as.character()
 
 HR_pvals = data.frame()
 
@@ -1028,7 +959,8 @@ HR_pvals = HR_pvals %>% mutate(p.star = ifelse(p.adj < 0.0001, "****",
 
 HR_pvals
 
-ggplot(filter(trip_tib_mut_filt_HR, mutation %in% c("-7", "1", "0")), aes(si_ratio, ratio, color = mutation)) +
+ggplot(filter(trip_tib_mut_filt_HR, mutation %in% c("-7", "1", "0")), 
+       aes(si_ratio, ratio, color = mutation)) +
   geom_quasirandom(dodge.width=1) +
   theme_bw(base_size = 16) + 
   scale_color_manual("legend", values = colora) +
@@ -1037,11 +969,114 @@ ggplot(filter(trip_tib_mut_filt_HR, mutation %in% c("-7", "1", "0")), aes(si_rat
                             "ratio_siRad51" = "siRAD51",
                             "ratio_siBRCA1" = "siBRCA1",
                             "ratio_siBRCA2" = "siBRCA2")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
   geom_text(data = HR_pvals, aes(x = si_ratio, y = .8 , label = p.star), size = 6)
 ```
 
 ### Figure legend
-*(h)*  
+*(G)* 
+
+
+## Panel S2H
+
+```{r FigS2H pathway contribution with HR siRNA, fig.height=5, fig.width=6}
+trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA_HR %>%
+  gather(NHEJ, MMEJ, SSTR, other_indels, key = "pathway", value = 'ratios') %>%
+  distinct(barcode, siRNA, pathway, drug, .keep_all = TRUE)
+
+trip_lbr2_siRNA_pathways$pathway <- factor(trip_lbr2_siRNA_pathways$pathway, levels=c("other_indels", "SSTR", "MMEJ", "NHEJ"))
+trip_lbr2_siRNA_pathways$siRNA <- factor(trip_lbr2_siRNA_pathways$siRNA, levels=exp_order)
+trip_lbr2_siRNA_pathways <- trip_lbr2_siRNA_pathways[!is.na(trip_lbr2_siRNA_pathways$ratios), ]
+
+pathway_contribution <- trip_lbr2_siRNA_pathways %>% group_by(siRNA, pathway, drug) %>% dplyr::summarise(pathway_contr = mean(ratios))
+
+p <- ggplot(pathway_contribution, aes(siRNA, pathway_contr, fill = pathway, order = pathway)) +
+  geom_bar(stat = "identity", position = "fill")  +
+  theme_bw(base_size = 16)
+p + scale_fill_manual("legend", values = colori) +
+  scale_x_discrete(labels=c("ratio_siPolQ" = "siPOLQ",
+                            "ratio_siRad51" = "siRAD51",
+                            "ratio_siBRCA1" = "siBRCA1",
+                            "ratio_siBRCA2" = "siBRCA2")) +
+  labs(x = element_blank(),
+       y = "abundance") +
+  facet_grid(~ drug)
+
+## Quick check for HR balance vs other indels : 0 / (+1) + (-7)
+# my_comparisons <- list( c("siBRCA1", "siNT"), c("siBRCA2", "siNT"), c("siRad51", "siNT"), c("siPolQ", "siNT"))
+# 
+# trip_mut_lbr2_all_siRNA_HR %>%
+#   distinct(barcode, siRNA, drug, mutation, freq) %>%
+#   filter(mutation %in% c(0, 1, -7)) %>%
+#   pivot_wider(names_from = c(mutation), values_from = freq)%>%
+#   mutate(HR_bal = `0` /  (`1` + `-7`)) %>% left_join(clone5_domains)%>%
+#   ggplot(aes(siRNA, HR_bal, color = group)) +
+#   geom_quasirandom() +
+#   stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", paired = T)
+```
+### Figure legend
+*(G-H)* Changes in indel frequencies and proportions after siRNA-mediated knockdown of indicated proteins. 
+
+
+## Panel S2I
+
+```{r FigS2I qPCRs with siRNA HR, fig.height=4, fig.width=6}
+## Calculate FC of mRNA's in HR check experiment.
+HR_ddcts = HR_dcts %>% 
+  # filter(replicate %in% c("rep1", "rep2")) %>%
+  dplyr::select(siRNA, replicate, dPolQ, dCtIP, dRad51, dBRCA1, dBRCA2) %>% 
+  filter(siRNA != "siCtIP") %>% # CtIP siRNA was too diluted and removed also from seq data
+  pivot_longer(!c(replicate, siRNA), names_to = "gene", values_to = "dCt") %>%
+  pivot_wider(names_from = siRNA,
+              values_from = c(dCt)) %>% 
+  mutate(ddPolQ = siPolQ-siNT,
+         ddRad51 = siRad51-siNT,
+         ddBRCA1 = siBRCA1-siNT,
+         ddBRCA2 = siBRCA2-siNT)
+
+# HR_dcts %>% mutate(fcRad51 = 2^-(ddRad51))
+
+HR_fc = HR_ddcts %>% mutate(siPolQ = 2^-(ddPolQ),
+                    siRad51 = 2^-(ddRad51),
+                    siBRCA1 = 2^-(ddBRCA1),
+                    siBRCA2 = 2^-(ddBRCA2)) %>% 
+  group_by(gene) %>% dplyr::select(replicate, gene, siPolQ, siRad51, siBRCA1, siBRCA2) %>% 
+  pivot_longer(!c(gene, replicate), names_to = "siRNA", values_to = "fc") %>%
+  filter(!(replicate == "rep1" & siRNA == "siBRCA1")) %>% # remove the odd siBRCA1 sample
+  filter(!(replicate == "rep3" & siRNA == "siRad51")) # remove the siRad51 (rep3 sample that didn't work and is also not in the indel data
+
+
+# Remove the siRNA experiment with BRCA1 that didn't work with the other replicate that worked
+HR_fc_filtered = HR_fc %>% 
+  filter(!(replicate == "rep1" & 
+             siRNA == "siBRCA1")) %>% 
+  mutate(replicate = ifelse(replicate == "rep1c", "rep1", replicate),
+         siRNA = factor(siRNA, levels = c("siPolQ", 
+                                             "siRad51", "siBRCA1", "siBRCA2")),
+         gene = factor(gene, levels = c("dPolQ",  "dCtIP",  
+                                         "dRad51", "dBRCA1", "dBRCA2")))
+
+HR_fc_filtered %>%
+  group_by(gene, siRNA) %>% 
+  dplyr::summarise(mean_fc = mean(fc, na.rm = TRUE)) %>%
+ggplot(., aes(gene, mean_fc)) + 
+  geom_bar(stat = "identity") + 
+  geom_point(aes(gene, fc),
+    data = HR_fc_filtered) +
+  facet_grid(. ~ siRNA) + 
+  theme_bw()
+  
+```
+
+### Figure legend
+*(I)* mRNA expression in cell samples show in (G-H). 
+
+## Panel S2I
+
+## Panel S2K
+
+## Panel S2L
+
 
 # Bibliography
 ```{r citations}

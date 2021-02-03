@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20201129
+in.dir.date = 20201213
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -51,6 +51,7 @@ library(broom)
 library(cowplot)
 library(report)
 library(purrr)
+library(viridis)
 
 ## Colors used in this script
 colores <- c("MMEJ_MMEJNHEJ" = "black")
@@ -70,7 +71,7 @@ SetFileName <- function(filename, initials) {
 }
 
 CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.value=0.001){
-  hist.corr.list <- data[data$exp_pool==condition_name, ] %>% dplyr::select(feature_name, targets) %>% as.matrix() %>% rcorr(type = "pearson")
+  hist.corr.list <- data[data$exp_pool==condition_name, ] %>% dplyr::select(feature_name, targets) %>% as.matrix() %>% rcorr(type = "spearman")
   
   histone.corr.df <- data.frame(rowname = names(hist.corr.list$r[1, -1]),
                                 corr = hist.corr.list$r[1, -1],
@@ -83,7 +84,7 @@ CorrelationDFMean <- function(data, condition_name, feature_name, targets, p.val
 CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.value=0.001, alfa = c(0.5, 1)){
   cor.df = data.frame()
   for (i in feature_name){
-    corr.list <- data %>% filter(exp_pool==condition_name) %>% dplyr::select(i, as.character(targets)) %>% as.matrix() %>% rcorr(type = "pearson")
+    corr.list <- data %>% filter(exp_pool==condition_name) %>% dplyr::select(i, as.character(targets)) %>% as.matrix() %>% rcorr(type = "spearman")
     
     df <- data.frame(rowname = names(corr.list$r[1, -1]),
                      corr = corr.list$r[1, -1],
@@ -97,7 +98,7 @@ CorrelationPlotMean <- function(data, condition_name, feature_name, targets, p.v
               pvalue = pvalue) %>%
     ggplot(aes(x = rowname, y = corr, fill = feature)) +
     geom_bar(stat = "identity", position = "dodge") +
-    ylab(paste("Pearson correlation with MMEJ:NHEJ balance")) +
+    ylab(paste("Spearman correlation with MMEJ:NHEJ balance")) +
     xlab("Chromatin Feature") +
     # ggtitle(paste("Repair pathways correlation with chromatin features in", condition_name, "exps")) +
     theme_bw(base_size = 16) +
@@ -670,7 +671,7 @@ ggplot(trip_tib, aes(efficiency, MMEJ_MMEJNHEJ)) +
 "*" = < 0.05 -->
 
 ## Panel 4E
-```{r Fig4E MMEJ ratio per heterochomatin domain, fig.height=7, fig.width=12}
+```{r Fig4E MMEJ ratio per heterochomatin domain, fig.height=6, fig.width=6}
 tib.dt = data.table(trip_tib)
 
 domain_levels = c('late_replicating', 'LAD', 'H3K9me2', 'H3K27me3')
@@ -698,10 +699,55 @@ plot_comb_grid(indel.dt[exp_pool=='mean_RSTP2_2000_LBR2_DMSO_64'], opt_df,
 
 ### Figure legend
 
-####### XABI CHIP       
-## Panel 4F 
+## Panel 4F
+```{r Fig4F MMEJ balance and heterochromatin signal, fig.height=7, fig.width=12}
+trip_tib_triple = trip_tib %>% filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_64", 
+                    late_replicating_domain  == "Domain",
+                    LAD_domain == "Domain",
+                    H3K9me2_domain == "Domain",
+                    H3K27me3_domain == "iDomain") %>% 
+  distinct(barcode, MMEJ_MMEJNHEJ, H3K9me2, LMNB1, late_replicating)
 
-```{r Fig4F DNA damage response protein pull down, fig.height=4, fig.width=10}
+p1 = trip_tib_triple %>%
+  distinct(barcode, H3K9me2, MMEJ_MMEJNHEJ) %>%
+  pivot_longer(!c(barcode, MMEJ_MMEJNHEJ), names_to = "modification", values_to = "value") %>%
+  ggplot(., aes(modification, MMEJ_MMEJNHEJ, color = value))  +
+  geom_quasirandom(size = 3) +
+  theme_bw(base_size = 16) + 
+  stat_cor(aes(MMEJ_MMEJNHEJ, value), method = "spearman", label.y = .55, label.x = 1.2)  +
+  ylab("MMEJ/(MMEJ+NHEJ)") +
+  theme(legend.position = "right") + 
+  scale_color_viridis()
+
+p2 = trip_tib_triple %>%
+  distinct(barcode, LMNB1, MMEJ_MMEJNHEJ) %>%
+  pivot_longer(!c(barcode, MMEJ_MMEJNHEJ), names_to = "modification", values_to = "value") %>%
+  ggplot(., aes(modification, MMEJ_MMEJNHEJ, color = value))  +
+  geom_quasirandom(size = 3) +
+  theme_bw(base_size = 16) + 
+  stat_cor(aes(MMEJ_MMEJNHEJ, value), method = "spearman", label.y = .55, label.x = 1.2)  +
+  ylab("MMEJ/(MMEJ+NHEJ)") +
+  theme(legend.position = "right") + scale_color_viridis()
+
+p3 = trip_tib_triple %>%
+  distinct(barcode, late_replicating, MMEJ_MMEJNHEJ) %>%
+  pivot_longer(!c(barcode, MMEJ_MMEJNHEJ), names_to = "modification", values_to = "value") %>%
+  ggplot(., aes(modification, MMEJ_MMEJNHEJ, color = value))  +
+  geom_quasirandom(size = 3) +
+  theme_bw(base_size = 16) + 
+  stat_cor(aes(MMEJ_MMEJNHEJ, value), method = "spearman", label.y = .55, label.x = 1.2)  +
+  ylab("MMEJ/(MMEJ+NHEJ)") +
+  theme(legend.position = "right") + 
+  scale_color_viridis()
+
+plot_grid(p1, p2, p3, nrow = 1)
+```
+
+
+####### XABI CHIP       
+## Panel 4G
+
+```{r Fig4G DNA damage response protein pull down, fig.height=4, fig.width=10}
 mean_trip_chip <- TRIP_ChIP %>%
          dplyr::group_by(antibody, plasmid, barcode, chromatin) %>%
          dplyr::summarise(norm.pull.down = mean(norm.pull.down),
@@ -725,9 +771,9 @@ ggplot(mean_trip_chip, aes(plasmid,log2(norm.pull.down), color = chromatin)) +
 ### Figure legend
 
 
-## Panel 4G 
+## Panel 4H
 
-```{r Fig4G normalized ChIP vs adjusted efficiency, fig.height=4, fig.width=10}
+```{r Fig4H normalized ChIP vs adjusted efficiency, fig.height=4, fig.width=10}
 ## Prepare models for LBR1, LBR12 & LBR15 to use to "spread" the LBR2 efficiency. This will allow us to maybe bipass the saturation in highly efficient IPRs.
 trip_tib_otherguides <- trip_tib_2000 %>%
   filter(exp_pool %in% c("mean_RSTP2_2000_LBR1_DMSO_64",
@@ -846,8 +892,8 @@ intercept_df = data.frame(antibody, intercepts)
 
 ### Figure legend
 
-## Panel 4G
-```{r Fig4G residuals vs MMEJ:NHEJ balance, fig.height=4, fig.width=10}
+## Panel 4I
+```{r Fig4I residuals vs MMEJ:NHEJ balance, fig.height=4, fig.width=10}
 # Calculate the residuals from the datapoints in the previous figure from the predicted relationship
 LigIV_res <- lm_guides_LigIV %>% augment %>% mutate(antibody = "LigIV")
 MRE11_res <- lm_guides_MRE11 %>% augment  %>% mutate(antibody = "MRE11")
@@ -873,7 +919,7 @@ fc.mean.DDR.model %>%
   scale_color_manual(values = chrom_colors2) +
   theme_bw(base_size = 16) + 
   geom_smooth(method = lm) + 
-  stat_cor() + 
+  stat_cor(method = "pearson") + 
   ylab("residuals") + 
   xlab("MMEJ:NHEJ balance") + 
   ggtitle("residuals from the red model (slope = 1) vs MMEJ:NHEJ balance per antibody") +
@@ -918,7 +964,7 @@ trip_tib %>%
   geom_point() +
   geom_smooth(method= "lm") +
   theme_bw(base_size = 16) +
-  stat_cor(method = "pearson", label.x = .25, label.y = .7) +
+  stat_cor(method = "spearman", label.x = .25, label.y = .7) +
   facet_wrap(feature ~ pathway, scales = "free", ncol = 3)
 ```
 

@@ -136,7 +136,7 @@ These are data from the crispr-trip.snake script, and a text file that has has b
 
 ```{r data loading}
 # First I load the statistics data from the mapping.
-file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20200221_TRIP/parsed/", pattern="mapping*.*statistics.txt", full.names = TRUE)
+file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20201220_TRIP/parsed/", pattern="mapping*.*statistics.txt", full.names = TRUE)
 mapping.statistics.list <- lapply(file.list, read.table, 
                                   header = TRUE)
 names(mapping.statistics.list)<- gsub(".*/iPCR.mapping_(.*?)_Seq_Run1.statistics.txt", 
@@ -146,7 +146,7 @@ mapping.statistics.df <- do.call(rbind.data.frame,
                                  mapping.statistics.list)
 
 # I also want to load the mapping data
-file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20200221_TRIP/table/", pattern="*.table", full.names = TRUE)
+file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20201220_TRIP/table/", pattern="*.table", full.names = TRUE)
 mapping.list <- lapply(file.list, read.table,
                        header = TRUE)
 names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table", 
@@ -156,7 +156,7 @@ names(mapping.list)<- gsub(".*/iPCR.mapping_2000([AB])_Seq_Run1(.*?).table",
 list2env(mapping.list ,.GlobalEnv)
 
 # load the statistics data from the indels.
-file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20200221_TRIP/parsed/", pattern="indel*.*statistics.txt", full.names = TRUE)
+file.list <- list.files(path = "/DATA/projects/DSBrepair/data/rs20201220_TRIP/parsed/", pattern="indel*.*statistics.txt", full.names = TRUE)
 indel.statistics.list <- lapply(file.list, read.table, 
                                   header = TRUE)
 names(indel.statistics.list)<- gsub(".*//indelPCR.indel_(.*?).statistics.txt", 
@@ -174,7 +174,7 @@ indel.statistics.df2 <- do.call(rbind.data.frame, indel.statistics.list2)
 indel.statistics.df <- rbind(indel.statistics.df1[, c(1,3, 7:9)], indel.statistics.df2[, c(1,3, 6:8)]) 
 
 # Load metadata
-metadata <- read.table("/DATA/projects/DSBrepair/config/rs20200829_metadata_Repair_TRIP.txt", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
+metadata <- read.table("/DATA/projects/DSBrepair/config/rs20210202_metadata_Repair_TRIP_cured_split.txt", header = TRUE, stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 ## Some data pre-processing  
@@ -494,7 +494,7 @@ indel.statistics.tib <- indel.statistics.df %>%
 
 exps <- indel.statistics.tib %>% pull(rowname) %>% unique()
 # select the used experiments
-used_exps <- exps[grep("Clone5GSKBIX|LBR2GSKBIXRep3|LBR2Rep1a|LBR2Rep1b|Perturb|LMNAKOold|MultiPlateTS|XV|siRNAPoolRep|GFP|noguide|88|92|96", exps, invert = T)]
+used_exps <- exps[grep("GFP|noguide", exps, invert = T)]
 used_exps_fullname <- indel.statistics.tib$rowname[indel.statistics.tib$rowname %in% used_exps]
 
 
@@ -512,9 +512,9 @@ ggplot(indel.statistics.tib, aes(discarded_reads)) + geom_histogram()
 ggplot(indel.statistics.filtered.tib, aes(discarded_reads)) + geom_histogram()
 
 min(indel.statistics.filtered.tib$discarded_reads)
-median(indel.statistics.filtered.tib$discarded_reads)
+mean(indel.statistics.filtered.tib$discarded_reads)
 max(indel.statistics.filtered.tib$discarded_reads)
-
+t.test(indel.statistics.filtered.tib$discarded_reads)
 
 indel.statistics.filtered.tib %>% filter(discarded_reads > .3)
 ```

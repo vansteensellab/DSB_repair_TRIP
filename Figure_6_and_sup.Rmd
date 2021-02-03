@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20201129
+in.dir.date = 20201218
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -565,10 +565,10 @@ wilcox.test(idomain, hetcomb)
 ### Panel B
 ```{r Fig6B, fig.height= 4, fig.width= 8}
 trip_tib_KO = trip_tib_2000 %>%
-  filter(exp_pool %in% c("mean_RSTP2_clone5_LBR2_LBR_KO_1_64", "mean_RSTP2_clone5_LBR2_LBR_KO_2_64", 
-                         "mean_RSTP2_clone5_LBR2_LBR_KO_3_64", "mean_RSTP2_clone5_LBR2_LBR_KO_4_64", 
-                         "mean_RSTP2_clone5_LBR2_LMNA_KO_1_64", "mean_RSTP2_clone5_LBR2_LMNA_KO_2_64", 
-                         "mean_RSTP2_clone5_LBR2_LMNA_KO_3_64", "mean_RSTP2_clone5_LBR2_LMNA_KO_4_64", 
+  filter(exp_pool %in% c("mean_RSTP2_clone5_LBR_KO_1_LBR2_LBR_KO_1_64", "mean_RSTP2_clone5_LBR_KO_2_LBR2_LBR_KO_2_64", 
+                         "mean_RSTP2_clone5_LBR_KO_3_LBR2_LBR_KO_3_64", "mean_RSTP2_clone5_LBR_KO_4_LBR2_LBR_KO_4_64", 
+                         "mean_RSTP2_clone5_LMNA_KO_1_LBR2_LMNA_KO_1_64", "mean_RSTP2_clone5_LMNA_KO_2_LBR2_LMNA_KO_2_64", 
+                         "mean_RSTP2_clone5_LMNA_KO_3_LBR2_LMNA_KO_3_64", "mean_RSTP2_clone5_LMNA_KO_4_LBR2_LMNA_KO_4_64", 
                          "mean_RSTP2_clone5_LBR2_KOCTRL1_64", 
                          "mean_RSTP2_clone5_LBR2_KOCTRL2_64", 
                          "mean_RSTP2_clone5_LBR2_KOCTRL3_64"),

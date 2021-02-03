@@ -14,15 +14,23 @@ knitr::opts_chunk$set(echo = TRUE)
 This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+```{r}
+library(tidyverse)
+```
+
+
 
 ```{r load data}
 # INPUT DIRECTORY
-in.dir.date = 20201029
+in.dir.date = 20201219
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 trip_tib_2000 = readRDS(paste0(in.dir, "RSTP2_IndelRatios_Chromatin_2kb.RDS"))
 load(paste0(in.dir, "Analyis_Mapping_RSTP2_2000.RData"))
 clone5_domains <- readRDS("/DATA/projects/DSBrepair/data/R/rs20200311_domains_clone5.RDS")
+metadata = read.table("/DATA/projects/DSBrepair/config/rs20201220_metadata_Repair_TRIP_cured.txt", 
+                       header = TRUE, 
+                       stringsAsFactors = FALSE)
 
 ```
 
@@ -42,162 +50,22 @@ You can also embed plots, for example:
 #                          "mean_RSTP2_2000_LBR12_DMSO_64",
 #                          "mean_RSTP2_2000_LBR15_DMSO_64"))
     
-trip_tib_2000 %>% filter(plasmid == "LBR2", 
-                         drug == "KOCTRL1",
-                         time %in% c(64, 72),
-                         # siRNA == "siCtIP",
-                         ssODN == "-",
-                         cell_line == "RSTP2_clone5"
-                         ) %>%
-  pull(exp_pool) %>% unique()
+# trip_tib_2000 %>% filter(plasmid == "LBR2", 
+#                          drug == "KOCTRL1",
+#                          time %in% c(64, 72),
+#                          # siRNA == "siCtIP",
+#                          ssODN == "-",
+#                          cell_line == "RSTP2_clone5"
+#                          ) %>%
+#   pull(exp_pool) %>% unique()
 
 chr.sites.TRIP <- analysis.mapped.integrations.df[ , c("seqname", "start", "ori", "barcode")]
 
 TRIP_data <- trip_tib_2000 %>% distinct(exp_pool, barcode, .keep_all = TRUE) %>%
-  filter(exp_pool %in% c(
-    # LBR1 DMSO
-    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR1_DMSO_64", 
-    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR1_DMSO_64",
-    "mean_RSTP2_2000_LBR1_DMSO_64",
-    # LBR12 DMSO
-    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR12_DMSO_64", 
-    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR12_DMSO_64",
-    "mean_RSTP2_2000_LBR12_DMSO_64",
-    # LBR15 DMSO
-    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR15_DMSO_64", 
-    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR15_DMSO_64",
-    "mean_RSTP2_2000_LBR15_DMSO_64",
-    # M3814
-    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR1_M3814_64", 
-    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR12_M3814_64",
-    "indel_NewGuidesM3814Rep1_RSTP2_2000_LBR15_M3814_64", 
-    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR1_M3814_64", 
-    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR12_M3814_64",
-    "indel_NewGuidesM3814Rep2_RSTP2_2000_LBR15_M3814_64",
-    "indel_LBR2M3814Rep1_RSTP2_2000_LBR2_M3814_64",      
-    "indel_LBR2M3814Rep2_RSTP2_2000_LBR2_M3814_64",      
-    "mean_RSTP2_2000_LBR1_M3814_64",                   
-    "mean_RSTP2_2000_LBR12_M3814_64",                    
-    "mean_RSTP2_2000_LBR15_M3814_64",                 
-    "mean_RSTP2_2000_LBR2_M3814_64",
-    # LBR2 DMSO
-    "indel_LBR2NU7441Rep1_LBR2_DMSO_64",
-    "indel_LBR2GSKBIXRep1_LBR2_DMSO_64",
-    "indel_LBR2ssODNRep1_LBR2_DMSO_64",
-    "indel_LBR2ssODNRep2_LBR2_DMSO_64",
-    "indel_LBR2GSKBIXRep2_LBR2_DMSO_64",
-    "indel_LBR2ssODNRep3_LBR2_DMSO_64",
-    "indel_LBR2M3814Rep1_RSTP2_2000_LBR2_DMSO_64",
-    "indel_LBR2M3814Rep2_RSTP2_2000_LBR2_DMSO_64",
-    "mean_RSTP2_2000_LBR2_DMSO_64",
-    # LBR2 -
-    "indel_LBR2Rep2_LBR2_64",
-    "indel_LBR2Rep3_LBR2_64",
-    "indel_LBR2Rep4a_LBR2_64",
-    "indel_LBR2Rep4b_LBR2_64",
-    "indel_LBR2Rep5_LBR2_64",
-    "indel_LBR2GSKBIXRep2_LBR2_64",
-    "mean_RSTP2_2000_LBR2_64",
-    # LBR 2 siRNA exps
-    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siRad51_64",
-    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siRad51_64",
-    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siRad51_64",
-    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siRad51_64",
-    "mean_RSTP2_clone5_LBR2_DMSO_siRad51_64",
-    "mean_RSTP2_clone5_LBR2_NU7441_siRad51_64",
-    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siNT_64",
-    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siNT_64",
-    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siNT_64",     
-    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siNT_64",
-    "mean_RSTP2_clone5_LBR2_DMSO_siNT_64",
-    "mean_RSTP2_clone5_LBR2_NU7441_siNT_64",
-    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siPolQ_64",
-    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siPolQ_64",
-    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siPolQ_64"  ,
-    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siPolQ_64",
-    "mean_RSTP2_clone5_LBR2_DMSO_siPolQ_64",            
-    "mean_RSTP2_clone5_LBR2_NU7441_siPolQ_64",
-    "indel_clonesiRNARep1_clone5_LBR2_DMSO_siCtIP_64",
-    "indel_clonesiRNARep1_clone5_LBR2_NU7441_siCtIP_64",
-    "indel_clonesiRNARep2_clone5_LBR2_DMSO_siCtIP_64",
-    "indel_clonesiRNARep2_clone5_LBR2_NU7441_siCtIP_64",
-    "mean_RSTP2_clone5_LBR2_DMSO_siCtIP_64",
-    "mean_RSTP2_clone5_LBR2_NU7441_siCtIP_64" ,
-    # LBR 2 siRNA HR exps
-    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siNT_72",     
-    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siPolQ_72",  
-    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siRad51_72", 
-    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siBRCA1_72", 
-    "indel_siHRrep1_clone5_RSTP2_clone5_LBR2_Shield_siBRCA2_72", 
-    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siNT_72",   
-    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siPolQ_72",  
-    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siRad51_72", 
-    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siBRCA1_72", 
-    "indel_siHRrep2_clone5_RSTP2_clone5_LBR2_Shield_siBRCA2_72", 
-    "mean_RSTP2_clone5_LBR2_Shield_siNT_72",                    
-    "mean_RSTP2_clone5_LBR2_Shield_siPolQ_72",           
-    "mean_RSTP2_clone5_LBR2_Shield_siRad51_72",                  
-    "mean_RSTP2_clone5_LBR2_Shield_siBRCA1_72",              
-    "mean_RSTP2_clone5_LBR2_Shield_siBRCA2_72",  
-    # BIX
-    "indel_LBR2GSKBIXRep1_LBR2_BIX0129_64",
-    "indel_LBR2GSKBIXRep2_LBR2_BIX0129_64",
-    "mean_RSTP2_2000_LBR2_BIX01294_64",
-    # GSK
-    "indel_LBR2GSKBIXRep1_LBR2_GSK126_64",
-    "indel_LBR2GSKBIXRep2_LBR2_GSK126_64",
-    "mean_RSTP2_2000_LBR2_GSK126_64",
-    # GSK DMSO (the individual experiments are already under the section LBR2 DMSO)
-    "mean_RSTP2_2000_LBR2_DMSOGSK_64",
-    # LMNA & LBR KO
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_1_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_1_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_1_64",
-    "mean_RSTP2_clone5_LBR2_LBR_KO_1_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_2_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_2_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_2_64",
-    "mean_RSTP2_clone5_LBR2_LBR_KO_2_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_3_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_3_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_3_64",
-    "mean_RSTP2_clone5_LBR2_LBR_KO_3_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LBR_KO_4_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LBR_KO_4_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LBR_KO_4_64",
-    "mean_RSTP2_clone5_LBR2_LBR_KO_4_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_1_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_1_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_1_64",
-    "mean_RSTP2_clone5_LBR2_LMNA_KO_1_64", 
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_2_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_2_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_2_64",
-    "mean_RSTP2_clone5_LBR2_LMNA_KO_2_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_3_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_3_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_3_64",
-    "mean_RSTP2_clone5_LBR2_LMNA_KO_3_64" ,
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_LMNA_KO_4_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_LMNA_KO_4_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_LMNA_KO_4_64",
-    "mean_RSTP2_clone5_LBR2_LMNA_KO_4_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_KOCTRL1_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_KOCTRL1_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_KOCTRL1_64",
-    "mean_RSTP2_clone5_LBR2_KOCTRL1_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_KOCTRL2_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_KOCTRL2_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_KOCTRL2_64",
-    "mean_RSTP2_clone5_LBR2_KOCTRL2_64",
-    "indel_LMNALBRKORep1_clone5_RSTP2_clone5_LBR2_KOCTRL3_64",
-    "indel_LMNALBRKORep2_clone5_RSTP2_clone5_LBR2_KOCTRL3_64",
-    "indel_LMNALBRKORep3_clone5_RSTP2_clone5_LBR2_KOCTRL3_64",
-    "mean_RSTP2_clone5_LBR2_KOCTRL3_64"
-  ))  %>% mutate(MMEJ_MMEJSSTR = 1 - SSTR_MMEJSSTR, 
+  mutate(MMEJ_MMEJSSTR = 1 - SSTR_MMEJSSTR, 
                  wild_type = 1 - efficiency) %>% 
   left_join(chr.sites.TRIP, by = "barcode") %>%
-  dplyr::select(seqname, start, ori, barcode, exp_pool, replicate, plasmid, time, drug, ssODN, siRNA, cell_line, pool, wild_type, NHEJ, MMEJ, SSTR, MMEJ_MMEJNHEJ, MMEJ_MMEJSSTR)
+  dplyr::select(seqname, start, ori, barcode, exp_pool, replicate, plasmid, time, drug, ssODN, siRNA, cell_line, wild_type, NHEJ, MMEJ, SSTR, MMEJ_MMEJNHEJ, MMEJ_MMEJSSTR)
 
 write.table(TRIP_data, file="/DATA/projects/DSBrepair/data/R/TRIP_data_DSB_repair_manuscript.tsv", quote=FALSE, sep='\t')
 
@@ -205,8 +73,11 @@ write.table(TRIP_data, file="/DATA/projects/DSBrepair/data/R/TRIP_data_DSB_repai
 
 
 ```{r Biosample Sheet SRA}
-biosample_start = TRIP_data %>% filter(replicate == "mean") %>%  as_tibble() %>% # filter for experiments with a mean, the singlets were not used in the study
+biosample_start = trip_tib_2000 %>% filter(replicate == "mean", drug != "DMSOGSK") %>% # filter for experiments with a mean, the singlets were not used in the study and remove the DMSOGSK
+  as_tibble() %>% 
   distinct(exp_pool, cell_line, plasmid, time, drug, ssODN, siRNA)  # select the relevant columns and remove duplicates
+
+
 
 # make a biosample list with pool A samples (because in the analysis we combine both), here we need to split them again
 poolA = biosample_start %>% as_tibble() %>%
@@ -217,23 +88,21 @@ poolA = biosample_start %>% as_tibble() %>%
 
 
 # Make biosample data for the timeseries
-meta.dt = fread('/DATA/projects/DSBrepair/config/cl20190816_metadata_timeseries_LBR2.tsv',
+meta.ts.dt = fread('/DATA/projects/DSBrepair/config/cl20190816_metadata_timeseries_LBR2.tsv',
                 stringsAsFactors=F, key='ID', colClasses=c('clone'='character'))
-meta.dt[, clone:= 'RSTP2_5']
+meta.ts.dt[, clone:= 'RSTP2_clone5']
 
-timeseries_samples = meta.dt %>% as_tibble() %>%
+timeseries_samples = meta.ts.dt %>% as_tibble() %>%
   filter(PCR_type == "indelPCR",
          time < 73,
-         series %in% c('TimeSeries2_a', 'TimeSeries2-3_b', 
-                     'TimeSeries3_a', 'TimeSeries4_a'),
+         series %in% c('TimeSeries2_a', 'TimeSeries2-3_b'),
          plasmid == "LBR2", 
          grepl("_5_LBR", ID)) %>% 
-  mutate(ssODN = ifelse(series%in%c('TimeSeries3_a', 'TimeSeries4_a'), "ssODN", "-"),
-         drug = ifelse(series%in%c('TimeSeries3_a', 'TimeSeries4_a'), "NU7441", "DMSO"),
+  mutate(ssODN = "-",
+         drug = "DMSO",
          siRNA = "-",
-         ID = gsub("(TimeSeries).*(_LBR2).*$", "RSTP2_clone5_\\1\\2", ID), 
-         drug = ifelse(ssODN == "ssODN", "NU7441", "DMSO")) %>%
-  mutate(exp_pool = paste(ID, ssODN, drug, time, sep = "_"),
+         ID = gsub("(TimeSeries).*(_LBR2).*$", "RSTP2_clone5_\\1\\2", ID)) %>%
+  mutate(exp_pool = paste(ID, drug, time, sep = "_"),
          cell_line = "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5") %>%
   distinct(exp_pool, cell_line, drug, plasmid, time, drug, ssODN, siRNA)
 
@@ -246,26 +115,286 @@ BioSamples = biosample_start %>% as_tibble() %>%
   rbind(., poolA, timeseries_samples) %>% # Add poolA samples so we have all the biosamples
   # add some of the default columns of the biosample sheet
   mutate(organism = "Homo sapiens",
+         sample_title = "",
+         bioproject_accession = "",
          isolate = "patient with chronic myelogenous leukemia (CML)",
          age = "53",
          biomaterial_provider = "Bas van Steensel, Division of Gene Regulation, Netherlands Cancer Institute",
          sex = "female",
          tissue = "bone marrow",
-         cell_line = ifelse(cell_line == "RSTP2_2000_A", "K562#17 ddCas9 DSB-TRIP (RSTP2) pool A", 
+         cell_subtype = ifelse(cell_line == "RSTP2_2000_A", "K562#17 ddCas9 DSB-TRIP (RSTP2) pool A", 
                             ifelse(cell_line == "RSTP2_2000_B", "K562#17 ddCas9 DSB-TRIP (RSTP2) pool B", 
-                                   "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5")),
+                                   ifelse(drug == "LBR_KO_1", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 1", 
+                                          ifelse(drug == "LBR_KO_2", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 2", 
+                                                 ifelse(drug == "LBR_KO_3", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 3", 
+                                                        ifelse(drug == "LBR_KO_4", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 4", 
+                                                               ifelse(drug == "LMNA_KO_1", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 1", 
+                                                                      ifelse(drug == "LMNA_KO_2", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 2", 
+                                                                             ifelse(drug == "LMNA_KO_3", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 3", 
+                                                                                    ifelse(drug == "LMNA_KO_4", "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 4",
+                                   "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5")))))))))),
          exp_pool = gsub("mean_", "", exp_pool),
+         cell_type = "",
+         cell_line = "K562",
          plasmid = ifelse(plasmid == "LBR2", "sgRNA LBR2", 
                           ifelse(plasmid == "LBR1", "sgRNA LBR1", 
                                  ifelse(plasmid == "LBR12", "sgRNA LBR12", 
                                         ifelse(plasmid == "LBR15", "sgRNA LBR15", plasmid)))),
          sample_type = "cell culture") %>%
-  dplyr::rename(sample_name = exp_pool) %>%
-  dplyr::select(sample_name, organism, isolate, age, 
-                biomaterial_provider, sex, tissue, cell_line, sample_type, 
-                plasmid, time, drug, ssODN, siRNA)
+  dplyr::rename(sample_name = exp_pool) %>%  
+  mutate(sample_name = paste0("K562_ddCas9_", sample_name)) %>%
+  dplyr::select(sample_name, sample_title, bioproject_accession, organism, isolate, age, 
+                biomaterial_provider, sex, tissue, cell_line, cell_subtype, cell_type, sample_type, 
+                plasmid,	drug,	time,	siRNA,	ssODN)
 
-write.table(BioSamples, file="/DATA/projects/DSBrepair/data/R/rs20201115_BioSamples_manuscript.tsv", quote=FALSE, sep='\t', row.names = F)
+write.table(BioSamples, file="/DATA/projects/DSBrepair/config/rs20201220_BioSamples_manuscript.tsv", quote=FALSE, sep='\t', row.names = F)
+
+```
+
+```{r Data Sheet SRA}
+# sample_name:            - sample_name from bio_sample
+# library_ID:             - ID from metadata
+# title:                  - "CRISPR/Cas9 mutation readout on the pathway reporters in K562 TRIP pool on sample: " 
+#                           "CRISPR/Cas9 mutation readout on the pathway reporters in K562 TRIP clone 5 on sample: "
+#                           "ChIP-PCR on the pathway reporters in K562 TRIP clone 5 on sample: "
+#                           "ChIP-PCR on the pathway reporters in K562 TRIP clone 5 on sample: "
+#                           "inverse PCR on K562 TRIP pool for the mapping of integrations on sample: "
+#                           "Tagmentation based mapping on K562 TRIP clone 5 for the mapping of integrations on sample: "
+#                           "Tagmentation based mapping on K562 TRIP clone 9 for the mapping of integrations on sample: "
+# library_strategy:       - AMPLICON for indels / other or iPCR
+# library_source:         - GENOMIC
+# library_selection:	    - PCR
+# library_layout:         - single / paired
+# platform:               - ILLUMINA
+# instrument_model:	      - Illumina MiSeq / Illumina HiSeq 2500 
+# design_description:	    - Short materials and methods
+# filetype:               - fastq
+# filename:	              - read1
+# filename2:	            - read2 if applicable
+# filename3:              -
+# filename4:              -
+# assembly:               - Either nothing or GRCh38 for tagmap or iPCRs
+# fasta_file:             - fasta for the alignment
+
+# SRA_data_start = trip_tib_2000 %>% filter(replicate != "mean", time %in% c(64, 72)) %>% # filter for experiments with a mean, the singlets were not used in the study
+#   distinct(exp_pool, cell_line, plasmid, time, drug, ssODN, siRNA, replicate)  # select the relevant columns and remove duplicates
+
+meta.data <- read.table("/DATA/projects/DSBrepair/config/rs20201220_metadata_Repair_TRIP_cured_2.txt", 
+                       header = TRUE, 
+                       stringsAsFactors = FALSE)
+
+
+## Time series 
+timeseries_samples = meta.ts.dt %>% as_tibble() %>%
+  filter(PCR_type == "indelPCR",
+         time < 73,
+         series %in% c('TimeSeries3_a', 'TimeSeries4_a'), # select only the timeseries with DMSO and without ssODN
+         plasmid == "LBR2", # no GFP
+         grepl("_5_LBR", ID)) %>% # to pick only clone 5 and not clone9
+  mutate(drug = "DMSO",
+         siRNA = "-",
+         replicate = ifelse(series == 'TimeSeries3_a', "replicate1", "replicate2"),
+         ID = gsub("(TimeSeries).*(_LBR2).*$", "RSTP2_clone5_\\1\\2", ID), 
+         cell_line = clone) %>%
+  mutate(sample_name = paste(ID, drug, time, sep = "_"), 
+         library_ID = paste("timeseries", cell_line, plasmid, well, time, drug, replicate, sep = "_"),
+         title = paste0("CRISPR/Cas9 mutation readout on the pathway reporters in K562 TRIP clone 5 on sample: ", ID),
+         library_strategy = "AMPLICON",
+         library_source = "GENOMIC",
+         library_selection = "PCR",
+         library_layout = "single",
+         platform = "ILLUMINA",
+         instrument_model = "Illumina MiSeq",
+        filetype = "fastq",  
+         design_description = "Timeseries of CRISPR/Cas9 editing in DSB K562 TRIP clone 5, handled by the Hamilton Starlab for cell culture and lysis, the cell lysates were amplified by two successive PCRs on the integrated pathway reporters to generate the libraries") %>%
+  dplyr::select(sample_name, library_ID, title, library_strategy, library_source, library_selection,
+                library_layout, platform,  instrument_model, design_description, filetype, filename = file)
+
+
+# Chromatin ChIP
+Chrom_ChIP <- read.table("/DATA/projects/DSBrepair/config/xv20201125_DSB_TRIP_S3C_metadata_input.tsv", # There is a typo for the k27 in this file NoR instead of noR
+                             header = TRUE, 
+                             stringsAsFactors = FALSE) %>% 
+  mutate(GCF = paste0("GCF-", gsub(".*/([0-9][0-9][0-9][0-9])_.*", "\\1", file)),
+         cell_line = "RSTP2_clone5",
+         replicate = ifelse(n.exp %in% c("chip2", "chip3b"), "replicate1", "replicate2"),
+         library_ID = paste("ChIP", PCR_type, cell_line, guide, antibody, n.exp, replicate, sep = "_"),
+         sample_name = "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5",
+         title = paste0("ChIP-PCR on the pathway reporters in K562 TRIP clone 5 on sample: ", library_ID),
+         library_strategy = "AMPLICON",
+         library_source = "GENOMIC",
+         library_selection = "PCR",
+         library_layout = "single",
+         platform = "ILLUMINA",
+         instrument_model = "Illumina MiSeq",
+         design_description = "ChIP-PCR on DSB K562 TRIP clone 5, the cell lysates were amplified by two successive PCRs on the integrated pathway reporters to generate the libraries, barcode PCR spanning only the barcode, and indelPCR spanning the sgRNA target site and the barcode, the latter was used in Figure S3C",
+         filetype = "fastq") %>%
+  dplyr::select(sample_name, library_ID, title, library_strategy, library_source, library_selection,
+                library_layout, platform,  instrument_model, design_description, filetype, filename = file)
+
+
+# Repair ChIP
+DDR_ChIP_indels <- read.table("/DATA/projects/DSBrepair/config/xv20200903_E1219_sample_list.txt", 
+                       header = TRUE, 
+                       stringsAsFactors = FALSE) %>% 
+  mutate(GCF = paste0("GCF-", gsub(".*/([0-9][0-9][0-9][0-9])_.*", "\\1", file)),
+         cell_line = "RSTP2_clone5",
+         library_ID = ifelse(PCR_type == "bcPCR", paste("ChIP", PCR_type, clone, plasmid, antibody, replicate,sep = "_"),
+                              paste(PCR_type, "RSTP2", clone, plasmid, antibody, replicate, sep = "_")),
+         sample_name =  ifelse(plasmid == "LBR2", "K562_ddCas9_RSTP2_clone5_LBR2_16", "K562_ddCas9_RSTP2_clone5_EV_16")) %>%
+  mutate(sample_name =  ifelse(PCR_type == "indelPCR" & plasmid == "LBR2", 
+                               "K562_ddCas9_RSTP2_clone5_LBR2_72", 
+                               ifelse(PCR_type == "indelPCR" & plasmid == "EV", 
+                               "K562_ddCas9_RSTP2_clone5_EV_72", sample_name)),
+         title = paste0("ChIP-PCR on the pathway reporters in K562 TRIP clone 5 on sample: ", library_ID),
+         library_strategy = "AMPLICON",
+         library_source = "GENOMIC",
+         library_selection = "PCR",
+         library_layout = "single",
+         platform = "ILLUMINA",
+         instrument_model = "Illumina MiSeq",
+         design_description = ifelse(PCR_type == "bcPCR", 
+                                     "ChIP-PCR on DSB K562 TRIP clone 5 for repair factors, the cells were transfected with sgRNA LBR2 or an empty vector, 8 hours later Cas9 was activated and 16 hours after activation the cells were collected and processed for ChIP. After standard ChIP procedure the samples were amplified by two successive PCRs on the integrated pathway reporters to generate the libraries, spanning the sgRNA target site and the barcode", 
+                                     "CRISPR/Cas9 mutation readout on the pathway reporters in K562 TRIP clone 5 for the DDR ChIP experiment after were transfected with sgRNA LBR2 or an empty vector, 8 hours later Cas9 was activated, 16 hours after activation the cells were collected and processed for ChIP but for these samples the left over was kept in the incubator for a total of 72 hours after activation. The samples were lysed and amplified by two successive PCRs on the integrated pathway reporters to generate the libraries, spanning the sgRNA target site and the barcode"),
+         filetype = "fastq") %>%
+  dplyr::select(sample_name, library_ID, title, library_strategy, library_source, library_selection,
+                library_layout, platform,  instrument_model, design_description, filetype, filename = file)
+
+
+# LaminB1 pA DamID
+pA.Dam.list = list.files(path = "/shared/gcf/t.v.schaik/5921/fastq_files/", full.names = T)
+
+pA.Dam.meta = data.frame("file" = pA.Dam.list) %>% 
+  mutate(library_ID = paste0("pA_DamID_", gsub(".*5921_(.*_r[12]_LMNB2|.*_r[12]_Dam)_.*", "\\1", pA.Dam.list)),
+         title = paste0("pA-DamID K562 TRIP clone 5 on sample: ", library_ID),
+         sample_name = ifelse(grepl("wt", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5", 
+                                    ifelse(grepl("LMNA1", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 1", 
+                                                 ifelse(grepl("LMNA2", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 2",
+                                                              ifelse(grepl("LMNA3", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 3",
+                                                                           ifelse(grepl("LMNA4", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LMNA KO 4",
+                                                                                        ifelse(grepl("LBR1", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 1",
+                                                                                                     ifelse(grepl("LBR2", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 2",
+                                                                                                                  ifelse(grepl("LBR3", library_ID), "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 3", 
+                                                                                                                               "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5 LBR KO 4")))))))),
+         library_strategy = "other",
+         library_source = "GENOMIC",
+         library_selection = "PCR",
+         library_layout = "single",
+         platform = "ILLUMINA",
+         instrument_model = "Illumina HiSeq 2500",
+         design_description = "pA-DamID libraries for LMNB1 and Dam only of DSB TRIP Clone 5",
+         filetype = "fastq") %>%
+  dplyr::select(sample_name, library_ID, title, library_strategy, library_source, library_selection,
+                library_layout, platform,  instrument_model, design_description, filetype, filename = file)
+
+# TRIP indel files
+
+BioSamplesMetaSRA = BioSamples %>% distinct(sample_name, plasmid, time, drug, ssODN, siRNA, cell_line = cell_subtype) %>% 
+  mutate(cell_line = str_replace(cell_line, "K562#17 ddCas9 DSB-TRIP ", ""),
+         cell_line = gsub(" ", "_", cell_line),
+         cell_line = str_replace(cell_line, "pool", "2000"),
+         cell_line = str_replace(cell_line, "[(]", ""),
+         cell_line = str_replace(cell_line, "[)]", ""),
+         cell_line = str_replace(cell_line, "e_5", "e5")) 
+
+
+TRIP.meta = meta.data %>% 
+  mutate(title = ifelse(PCR_type == "indelPCR", 
+                        paste0("CRISPR/Cas9 mutation readout on the pathway reporters in K562 TRIP ", cell_line, "on sample: ", ID), 
+                        paste0("inverse PCR on K562 TRIP pool for the mapping of integrations on sample: ", ID)),
+         library_strategy = "AMPLICON",
+         library_source = "GENOMIC",
+         library_selection = "PCR",
+         library_layout = "single",
+         platform = "ILLUMINA",
+         instrument_model = ifelse(GCF %in% c("GCF-4803", "GCF-5106", "GCF-5504", "GCF-5858"), "Illumina HiSeq 2500", "Illumina MiSeq"),
+         design_description = ifelse(PCR_type == "indelPCR", "CRISPR/Cas9 mutation readout on the pathway reporters in different K562 TRIP pools or clones, 64 or 72 hours after activation the cells were collected and processed with two successive PCRs on the integrated pathway reporters to generate the libraries, spanning the sgRNA target site and the barcode", 
+                                     "For the inverse PCR, samples were digested and religated for circularisation, then the samples were amplified with two successive PCRs to generate the libraries. Full protocol is available at nature protocols, Akhtar, W., Pindyurin, A., de Jong, J. et al. (2014) https://doi.org/10.1038/nprot.2014.072"),
+         plasmid = ifelse(grepl("LBR", plasmid), paste0("sgRNA ", plasmid), plasmid),
+         library_ID = ID,
+         filetype = "fastq",
+         cell_line = ifelse(pool == "A", paste0(cell_line, "_A"), 
+                            ifelse(pool == "B", paste0(cell_line, "_B"), 
+                                   cell_line))) %>% 
+  left_join(BioSamplesMetaSRA, by = c("plasmid", "time", "drug", "ssODN", "siRNA", "cell_line")) %>%
+  filter(!is.na(library_ID)) %>% 
+  dplyr::select(sample_name, library_ID, title, library_strategy, library_source, library_selection,
+                library_layout, platform,  instrument_model, design_description, filetype,  filename = file)
+
+TRIP.meta.indels = TRIP.meta %>% filter(!is.na(sample_name))
+
+## Split the for iPCR metadata data
+unmerged.iPCR.files.R1 = list.files(path = "/DATA/projects/DSBrepair/data/SRA_data_DSBTRIP", pattern = "4803_iPCR.*[12]_R1.fq.gz", full.names = T)
+unmerged.iPCR.files.R2 = list.files(path = "/DATA/projects/DSBrepair/data/SRA_data_DSBTRIP", pattern = "4803_iPCR.*[12]_R2.fq.gz", full.names = T)
+
+TRIP.meta.iPCR = TRIP.meta %>% filter(is.na(sample_name))
+TRIP.meta.iPCR = TRIP.meta.iPCR %>% bind_rows(TRIP.meta.iPCR) %>% arrange(library_ID) %>%
+  mutate(filename = unmerged.iPCR.files.R1, 
+         filename2 = unmerged.iPCR.files.R2,
+         library_layout = "paired",
+          filetype = "fastq",  
+         library_ID = ifelse(grepl("_1_", filename), gsub("_Seq", "_Rep1_Seq" , library_ID), gsub("_Seq", "_Rep2_Seq" , library_ID)),
+         title = ifelse(grepl("_1_", filename), gsub("_Seq", "_Rep1_Seq" , title), gsub("_Seq", "_Rep2_Seq" , title)),
+         sample_name = ifelse(grepl("_A_", filename), 
+                              "K562#17 ddCas9 DSB-TRIP (RSTP2) pool A",
+                              "K562#17 ddCas9 DSB-TRIP (RSTP2) pool B"))
+
+# Tagmentation data: 
+Tn5.files.R1 = list.files(path = "/shared/gcf/r.schep/5658/fastq_files/", pattern = "RSTP2_[59].*R1_001.fastq.gz", full.names = T)
+Tn5.files.R2 = list.files(path = "/shared/gcf/r.schep/5658/fastq_files/", pattern = "RSTP2_[59].*R2_001.fastq.gz", full.names = T)
+
+
+Tn5.meta = data.frame("filename" = Tn5.files.R1, "filename2" = Tn5.files.R2) %>%
+ mutate(sample_name = ifelse(grepl("RSTP2_5", filename), 
+                             "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 5", 
+                             "K562#17 ddCas9 DSB-TRIP (RSTP2) clone 9"), 
+        library_ID = paste0("Tn5_mapping_", gsub(".*5658_.._(RSTP2_[59]_[Rev|For]).*", "\\1", filename)), 
+        title = paste0("Tagmentation based mapping of sample ", library_ID),
+         library_strategy = "other",
+         library_source = "GENOMIC",
+         library_selection = "PCR",
+         library_layout = "paired",
+         platform = "ILLUMINA",
+        instrument_model ="Illumina MiSeq", 
+        filetype = "fastq",  
+        design_description = "Tagmentation libraries, gDNA was tagmented, library was generated by amplifying sequences from both the 5' and 3' LTRs with the Tn5 adapter.") %>% 
+  dplyr::select(sample_name, library_ID, title, library_strategy, library_source, library_selection,
+                library_layout, platform,  instrument_model, design_description, filetype,  filename, filename2)
+
+
+SRA_Meta_Data = bind_rows(timeseries_samples, pA.Dam.meta, Chrom_ChIP, DDR_ChIP_indels, TRIP.meta.indels, TRIP.meta.iPCR, Tn5.meta)
+
+
+dupli_ABtogether = SRA_Meta_Data %>% filter(duplicated(filename)) %>% pull(filename)
+
+
+
+write.table(SRA_Meta_Data, file="/DATA/projects/DSBrepair/git/manuscript_dsb_trip/rs20201120_SRA_metadata_manuscript.tsv", quote=FALSE, sep='\t', row.names = F)
+
+final_SRA_Meta_Data = SRA_Meta_Data %>% mutate(filename = gsub("(.*/\\s*(.*$))", "\\2", filename), 
+                         filename2 = gsub("(.*/\\s*(.*$))", "\\2", filename2))
+
+write.table(final_SRA_Meta_Data, file="/DATA/projects/DSBrepair/config/rs20201120_SRA_metadata_manuscript_final.tsv", quote=FALSE, sep='\t', row.names = F)
+
+
+
+#        GCF
+# 1 GCF-4803 = HiSeq 2500 Rapid Run Mode - paired - 150bp (RS)
+# 2 GCF-5106 = HiSeq 2500 Rapid Run Mode - single - 150bp (EB)
+# 3 GCF-5504 = HiSeq 2500 Rapid Run Mode - single - 150bp (RS)
+# 4 GCF-5858 = HiSeq 2500 Rapid Run Mode - single - 150bp (RS)
+# 5 GCF-5883 = MiSeq Micro - single - 150bp (RS)
+# 6 GCF-6074 = MiSeq - single - 150bp (LD)
+# 7 GCF-6250 = MiSeq - single - 150bp (?)
+# Tn5
+# 8 GCF-6250 = 
+# ChIP Xabi
+# 9 GCF-5363 = MiSeq - single - 150bp (RS)
+# 10 GCF-5444 = ?
+# 11 GCF-5565 = ?
+# 11 GCF-5812 = ?
+
+# 
 
 ```
 

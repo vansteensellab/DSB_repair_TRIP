@@ -55,7 +55,7 @@ library(report)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20201129
+in.dir.date = 20210202
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 dir.create(out.dir, showWarnings = FALSE)
@@ -108,6 +108,26 @@ names(file.dt) = c('file', 'target')
 hist.domains.dt = file.dt[!is.na(file),
                  fread(file, col.names=c('barcode', 'domain', 'distance')),
 				 by=c('target')]
+
+clone5bc <- c("AGGGCGTAAAATATTT.B",
+                    "TATGGCTGTCGGGTAG.B",
+                    "TGTCCCTTAGTACTTT.B",
+                    "AGAAAATAATATGACG.B",
+                    "CGGCCTGAAGGTCAGG.B",
+                    "TTGAACGCGGGCTCGG.B",
+                    "GCTAACATCACGAATC.B",
+                    "GCGCACCCTTTAATTG.B",
+                    "ACTGTCGAGTTGTCCG.B",
+                    "CCGGGGACGTATGCAC.B",
+                    "TCTTTTGAGGAGCTGA.B",
+                    "ATATCGTTGCTGGAGA.B",
+                    "CATCCACCACACTTCA.B",
+                    "ACCCCTAAAGGCGCTG.B",
+                    "ATACTATATTTAACGG.B",
+                    "CATTTCTGATCAATAA.B",
+                    "GAGCGCGTCACCGGGT.B",
+                    "GTACCTCTCGATAGTG.B",
+                    "TGGCCAATATTTGTCT.B")
 ```
 That's done, further with the preprossesing of the chromatin data.
 
@@ -214,8 +234,10 @@ setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "SPIN-100kb_domain", "S
 
 chip_domains.dt[, pool := gsub("20180918.RSTP2", "RSTP2_2000", pool, perl = TRUE)]
 chip_domains.dt[, pool := gsub("clone_set", "RSTP2_clone5", pool, perl = TRUE)]
+chip_domains.dt = chip_domains.dt[!(barcode %in% clone5bc & pool == "RSTP2_2000"), ]
+setnames(chip_domains.dt, "pool", "cell_line")
 
-trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode", "cell_line" = "pool")) %>% 
+trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode", "cell_line")) %>% 
   as_tibble()
 trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
 ```
@@ -232,7 +254,7 @@ trip_tib <- dplyr::select(trip_tib, !c("H3K9me3"))
 trip_tib_2000 <- trip_tib %>% filter(binsize == 2000) %>% select_if(not_all_na)
 
 # Same for the mutations plotting file
-trip_tib_mut = left_join(all.mutations.trunc.dt, chip_domains.dt, by = c("barcode", "cell_line" = "pool")) %>% as_tibble()
+trip_tib_mut = left_join(all.mutations.trunc.dt, chip_domains.dt, by = c("barcode")) %>% as_tibble()
 trip_tib_mut <- trip_tib_mut[!is.na(trip_tib_mut$exp), ]
 # trip_tib_mut_1000 <- trip_tib_mut %>% filter(binsize == 1000) %>% select_if(not_all_na)
 trip_tib_mut_2000 <- trip_tib_mut %>% filter(binsize == 2000) %>% select_if(not_all_na)
@@ -259,6 +281,6 @@ paste("Run time: ",format(Sys.time()-StartTime))
 getwd()
 date()
 sessionInfo()
-rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
-gc() #free up memrory and report the memory usage.
+# rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
+gc() #free up memory and report the memory usage.
 ```
