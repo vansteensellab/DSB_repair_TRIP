@@ -406,8 +406,8 @@ p <- ggplot(pathway_contribution, aes(exp_pool, pathway_contr, fill = pathway, o
   theme_bw(base_size = 16)
 p + scale_fill_manual("legend", values = colores) +
   scale_x_discrete(labels=c("mean_RSTP2_2000_LBR2_DMSO_64" = "DMSO",
-                            "mean_RSTP2_2000_LBR2_NU7441_64" = "ssODN + DMSO",
-                            "mean_RSTP2_2000_LBR2_DMSO_ssODN_64" = "NU7441",
+                            "mean_RSTP2_2000_LBR2_NU7441_64" = "NU7441",
+                            "mean_RSTP2_2000_LBR2_DMSO_ssODN_64" = "ssODN + DMSO",
                             "mean_RSTP2_2000_LBR2_NU7441_ssODN_64" = "ssODN + NU7441")) +
   labs(x = element_blank(),
        y = "abundance")
