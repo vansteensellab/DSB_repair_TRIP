@@ -1,7 +1,9 @@
 # manuscript_DSB_trip
 
-This repository is related to 
+This repository is related to:
+
 *Impact of chromatin context on Cas9-induced DNA double-strand break repair pathway balance* (bioRxiv 2020)
+
 https://www.biorxiv.org/content/10.1101/2020.05.05.078436v1
 
 It has also under revision at Molecular Cell.
@@ -9,6 +11,7 @@ It has also under revision at Molecular Cell.
 **Data availability**
 
 Raw sequencing data: https://www.ncbi.nlm.nih.gov/bioproject/PRJNA686952
+
 Processed data and markdowns: https://osf.io/cywxd/
 
 **Summary**
