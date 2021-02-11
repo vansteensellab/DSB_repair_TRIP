@@ -15,7 +15,13 @@ Processed data and markdowns: https://osf.io/cywxd/
 
 DNA double-strand break (DSB) repair is mediated by multiple pathways. It is thought that the local chromatin context affects the pathway choice, but the underlying principles are poorly understood. Using a newly developed multiplexed reporter assay in combination with Cas9 cutting, we systematically measured the relative activities of three DSB repair pathways as a function of chromatin context in >1,000 genomic locations. This revealed that non-homologous end-joining (NHEJ) is broadly biased towards euchromatin, while the contribution of microhomology-mediated end-joining (MMEJ) is higher in specific heterochromatin contexts. In H3K27me3-marked heterochromatin, inhibition of the H3K27 methyltransferase EZH2 reverts the balance towards NHEJ. Single-stranded template repair (SSTR), often used for precise CRISPR editing, competes with MMEJ, and is moderately linked to chromatin context. These results provide insight into the impact of chromatin on DSB repair pathway balance, and guidance for the design of Cas9-mediated genome editing experiments.
 
-**1. Indel & mapping (iPCR) data from the IPRs**
+**Conda environment**
+
+
+**1. Raw data processing**
+
+
+**2. Indel & mapping (iPCR) data from the IPRs**
 
 It contains three main scripts that process the data that was created by the DSB_trip_snakamake. 
 
@@ -28,11 +34,11 @@ These scripts produce multiple RDS output files that are avaible in the R data o
 
 
 
-**2. Mapping IPRs with Tagmeppr**
+**3. Mapping IPRs with Tagmeppr**
 
-**3. Rearrangement detection with tagmentation**
+**4. Rearrangement detection with tagmentation**
 
-**4. ChIP**
+**5. ChIP**
 
-**5. Timeseries**
+**6. Timeseries**
 
