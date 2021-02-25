@@ -36,7 +36,7 @@ pdf.options(useDingbats = FALSE)
 ## Path, Libraries, Parameters and Useful Functions
 ```{r setup, message=FALSE, warnings=FALSE}
 # INPUT DIRECTORY
-in.dir.date = 20201218
+in.dir.date = 20210202
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 # libraries:
@@ -565,13 +565,13 @@ wilcox.test(idomain, hetcomb)
 ### Panel B
 ```{r Fig6B, fig.height= 4, fig.width= 8}
 trip_tib_KO = trip_tib_2000 %>%
-  filter(exp_pool %in% c("mean_RSTP2_clone5_LBR_KO_1_LBR2_LBR_KO_1_64", "mean_RSTP2_clone5_LBR_KO_2_LBR2_LBR_KO_2_64", 
-                         "mean_RSTP2_clone5_LBR_KO_3_LBR2_LBR_KO_3_64", "mean_RSTP2_clone5_LBR_KO_4_LBR2_LBR_KO_4_64", 
-                         "mean_RSTP2_clone5_LMNA_KO_1_LBR2_LMNA_KO_1_64", "mean_RSTP2_clone5_LMNA_KO_2_LBR2_LMNA_KO_2_64", 
-                         "mean_RSTP2_clone5_LMNA_KO_3_LBR2_LMNA_KO_3_64", "mean_RSTP2_clone5_LMNA_KO_4_LBR2_LMNA_KO_4_64", 
-                         "mean_RSTP2_clone5_LBR2_KOCTRL1_64", 
-                         "mean_RSTP2_clone5_LBR2_KOCTRL2_64", 
-                         "mean_RSTP2_clone5_LBR2_KOCTRL3_64"),
+  filter(exp_pool %in% c("mean_RSTP2_clone5_LBR_KO_1_LBR2_LBR_KO_1_72", "mean_RSTP2_clone5_LBR_KO_2_LBR2_LBR_KO_2_72", 
+                         "mean_RSTP2_clone5_LBR_KO_3_LBR2_LBR_KO_3_72", "mean_RSTP2_clone5_LBR_KO_4_LBR2_LBR_KO_4_72", 
+                         "mean_RSTP2_clone5_LMNA_KO_1_LBR2_LMNA_KO_1_72", "mean_RSTP2_clone5_LMNA_KO_2_LBR2_LMNA_KO_2_72", 
+                         "mean_RSTP2_clone5_LMNA_KO_3_LBR2_LMNA_KO_3_72", "mean_RSTP2_clone5_LMNA_KO_4_LBR2_LMNA_KO_4_72", 
+                         "mean_RSTP2_clone5_LBR2_KOCTRL1_72", 
+                         "mean_RSTP2_clone5_LBR2_KOCTRL2_72", 
+                         "mean_RSTP2_clone5_LBR2_KOCTRL3_72"),
          barcode %in% clone5barcodes) %>%
   distinct(barcode, exp_pool, .keep_all = TRUE) %>% 
   mutate(KO = ifelse(drug %in% c("LMNA_KO_1",
@@ -687,7 +687,7 @@ ipr_dam = mean_dam %>%
   mutate(KO_clone = ifelse(KO == "Clone5", "Clone5", KO_clone)) # rename wt to Clone5 for consistency
 
 ggplot(ipr_dam, aes(x=MMEJ_MMEJNHEJ, y=z_score, color = KO, shape = KO)) +
-  geom_point() +
+  geom_point(size = 2.5) +
   ggtitle('MMEJ:NHEJ vs DamID 20kb') +
   theme_bw() +
   theme(aspect.ratio=1) + 

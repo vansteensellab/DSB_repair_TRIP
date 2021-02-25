@@ -52,11 +52,14 @@ library(stringr)
 library(report)
 
 ## Select outdir
-out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
-dir.create(out.dir)
+# out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
+# dir.create(out.dir)
+
 
 in.dir.date = 20210202
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
+
+out.dir = in.dir
 
 dir.create(out.dir, showWarnings = FALSE)
 ```
@@ -232,14 +235,12 @@ chip_domains.dt = chip_domains.dt[domains.dt, on = "barcode"]
 setnames(chip_domains.dt, c("domain_LAD", "DNAse_broad", "SPIN-100kb_domain", "SPIN-10state_domain"),
          c("LAD", "DHS_domain", "SPIN-100kb", "SPIN-10state"))
 
-chip_domains.dt[, pool := gsub("20180918.RSTP2", "RSTP2_2000", pool, perl = TRUE)]
-chip_domains.dt[, pool := gsub("clone_set", "RSTP2_clone5", pool, perl = TRUE)]
-chip_domains.dt = chip_domains.dt[!(barcode %in% clone5bc & pool == "RSTP2_2000"), ]
-setnames(chip_domains.dt, "pool", "cell_line")
+chip_domains.dt[, pool := NULL]
 
-trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode", "cell_line")) %>% 
+# Merge on barcode (cell line is not required - however not that the chromatin data is not accurate for the KO cell lines)
+trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode")) %>% 
   as_tibble()
-trip_tib <- trip_tib[!is.na(trip_tib$exp), ]
+trip_tib <- trip_tib[!is.na(trip_tib$exp), ] # remove NAs if applicable
 ```
 
 ### Remove K9me3 data
