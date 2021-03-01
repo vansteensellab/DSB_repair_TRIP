@@ -37,7 +37,7 @@ The data that was used for these scripts are available in the processed sequenci
 These scripts produce multiple RDS output files that are avaible in the R data output for analysis folder on https://osf.io/cywxd/.
 
 **3. Mapping IPRs with Tagmeppr**
-
+This script uses the tagmeppr package to map the IPRs to hg38. It was recently added because it was part of a mapping effort of multiple other clones. This has been streamlined for the publication. It uses raw demultiplexed sequencing data and puts out a table with the integrations and figures of the mapping (not in the paper).
 
 **4. Rearrangement detection with tagmentation**
 
