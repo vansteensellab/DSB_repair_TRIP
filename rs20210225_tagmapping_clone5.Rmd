@@ -1,0 +1,231 @@
+---
+title: "Tagmapping the IPRs in clone 5 and clone 9 with Tagmeppr"
+author: "Ruben Schep"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    theme: journal #cerulean
+    highlight: monochrome
+    toc: true
+    toc_float: true
+    code_folding: show
+  editor_options:
+    chunk_output_type: console
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+StartTime <-Sys.time()
+library(knitr)
+
+# 8-digit Date tag:
+Date <- substr(gsub("-","",Sys.time()),1,8)
+
+## Select outdir
+out.dir = paste0("figures/rs", Date, "/")
+dir.create(out.dir)
+opts_chunk$set(dev=c('png', 'pdf'), fig.path = file.path(out.dir))
+pdf.options(useDingbats = FALSE)
+```
+
+### Project description
+We have mapped most of the barcodes from Clone 5 from the DSB-TRIP pool but we did not manage to map all of the sites, here we try to map them with a tagmentation protocol adapted from (Stern, 2017, bioRxiv) (alas without the barcode - that will be confirmed manually by sanger sequencing). 
+
+### Method
+The gDNA of clone 5 and clone 9 were tagmented as described in Schep et al. 2020 bioRxiv. The sequences were demultiplexed and the raw reads were used in this script to map the piggybac sites to hg38.
+
+### Setup
+load all necessary packages
+
+Load the libraries and set the parameters.
+
+```{r set-up, message = F, warning = F}
+
+# Load dependencies
+library(tagMeppr)
+# library("BSgenome.Mmusculus.UCSC.mm10")
+library(parallel)
+library(withr)
+library(VennDiagram)
+library(tidyverse)
+library(ggplot2)
+library(data.table)
+
+# Prepare output 
+output.dir <- "/DATA/projects/DSBrepair/data/rs20210225_tagmap_clone5"
+dir.create(output.dir, showWarnings = FALSE)
+
+```
+
+
+
+###Loading a tagMapprIndex
+
+```{r load Index}
+# library("BSgenome.Hsapiens.UCSC.hg38")
+# with_path("/DATA/usr/m.eder/anaconda3/bin/",{
+#   reference_hg19_PB = makeIndex(indexPath = '/DATA/usr/r.schep/projects/tagmap_ruben/premadeIndex/hg38_pb/',
+# bsgenome = BSgenome.Hsapiens.UCSC.hg38,
+# ITR = 'PiggyBac',
+# targetInsertionSite = 'TTAA', verbose = T)})
+
+#Load index
+# reference_mm10_PB = loadIndex('/DATA/usr/m.eder/projects/Tn5_tagmentation/premadeReferences/BSgenome.Mmusculus.UCSC.mm10_PiggyBac_tagMeppRindex.fa.gz')
+reference_hg38_PB = loadIndex('/DATA/usr/r.schep/projects/tagmap_ruben/premadeIndex/hg38_pb/BSgenome.Hsapiens.UCSC.hg38_PiggyBac_tagMeppRindex.fa.gz')
+
+#print index
+# print(reference_mm10_PB)
+```
+
+### Creating new samples
+
+```{r loading the data for tagmeppr}
+# Quick script to make the meta data file from the fastQ filenames
+# First I did this in the terminal:
+# r.schep@lovelace:/shared/gcf/r.schep/6236/fastq_files$ ls >> /DATA/usr/r.schep/projects/tagmap_ruben/R/rs20201207_file_list_GCF6236.txt
+library(tidyverse)
+
+file_list = list.files("/shared/gcf/r.schep/5658/fastq_files", full.names = T, pattern = "RSTP2_5|RSTP2_9") %>% as_tibble()
+
+colnames(file_list) = "file"
+
+meta_tagmap = file_list %>% mutate(read = gsub(".*_(R[12])_001.fastq.gz", "\\1",  file),
+                                   ID =  gsub("/shared/gcf/r.schep/5658/fastq_files/5658_.._(.*)_[FR].._.*", "\\1",  file),
+                                   Direction = ifelse(grepl("For", file), "Fwd", "Rev")) %>%
+  pivot_wider(names_from = c(read, Direction), values_from = file) %>% 
+  dplyr::rename(R1 = R1_Rev, R2 = R2_Rev, F1 = R1_Fwd, F2 = R2_Fwd)
+
+meta_data_tagmeppr_list = split(meta_tagmap, meta_tagmap$ID)
+
+tagMepprSamples_list = mclapply(names(meta_data_tagmeppr_list), function(sample) {
+                    vars = meta_data_tagmeppr_list[[sample]]
+                    tagmepp_dat = newTagMeppr(F1 = vars[["F1"]],
+                                              F2 = vars[["F2"]],
+                                              R1 = vars[["R1"]],
+                                              R2 = vars[["R2"]],
+                                              name = sample, protocol = "PiggyBac")
+                    return(tagmepp_dat)}, mc.cores = 20)
+```
+
+### Check Primers
+
+```{r checking primers}
+fwdPrimer = "CGTCAATTTTACGCAGACTATC"
+revPrimer = "GTACGTCACAATATGATTATCTTTCTAG"
+
+tagMepprSamples_list  = mclapply(seq_along(tagMepprSamples_list), function(sample) {
+  dat = tagMepprSamples_list[[sample]]
+  checkPrimer(fwdPrimer = fwdPrimer,
+              revPrimer = revPrimer,
+              exp = dat,
+              ITR = 'PiggyBac')
+  tagMepprSamples_list[[sample]] = dat},
+  mc.cores = 30)
+
+head(tagMepprSamples_list)
+```
+
+### Aligning of sequences to PiggyBac and mouse genome
+
+```{r Aligning, warning=F, message=F}
+tagMepprSamples_aligned_list  = mclapply(seq_along(tagMepprSamples_list), function(sample) {
+  dat = tagMepprSamples_list[[sample]]
+  with_path("/DATA/usr/m.eder/anaconda3/bin/",{
+    align(exp = dat,
+          ref = reference_hg38_PB,
+          cores = 8)})
+  tagMepprSamples_list[[sample]] = dat},
+  mc.cores = 5)
+```
+
+### Find insertions
+
+```{R find insertions}
+tagMepprSamples_aligned_ins_list = mclapply(seq_along(tagMepprSamples_aligned_list), function(sample) {
+  dat = tagMepprSamples_aligned_list[[sample]]
+  findInsertions(exp = dat, 
+                 ref = reference_hg38_PB, 
+                 padding = 2)
+  tagMepprSamples_aligned_list[[sample]] = dat},
+  mc.cores = 20)
+
+tagMepprSamples_aligned_ins_list
+```
+
+### Found insertions
+
+### To display all TIS found, change alpha to Infinite, no filtering according to p-value anymore
+
+
+```{r Combing the results in a bed file}
+tagMepprSamples_result_list = list()
+tagMepprSamples_result_list  = mclapply(seq_along(tagMepprSamples_aligned_ins_list), function(sample) {
+  dat = tagMepprSamples_aligned_ins_list[[sample]]
+  dat.result = results(dat, alpha=Inf)
+  if (nrow(dat.result) > 0) {
+  dat.result$ID = tagMepprSamples_aligned_ins_list[[sample]]$name}
+  tagMepprSamples_result_list = rbind(tagMepprSamples_result_list, dat.result)},
+  mc.cores = 20)
+
+tagMepprSamples_df = do.call(rbind, tagMepprSamples_result_list)
+```
+
+### Plotting all the inserts on a chromosome ideogram
+```{r plotting the insertions of significant ones}
+plotInsertions(tagMepprSamples_aligned_ins_list)
+```
+
+
+### Print results
+```{r individual IPR plotting clone 5} 
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 1)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 2)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 3)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 4)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 5)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 6)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 7)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 8)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 9)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 10)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 11)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 12)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 13)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 14)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 15)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 16)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 17)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 18)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 19)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 20)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 21)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 22)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 23)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 24)
+plotSite(tagMepprSamples_aligned_ins_list[[1]], 25)
+```
+
+```{r individual IPR plotting clone 9} 
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 1)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 2)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 3)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 4)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 5)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 6)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 7)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 8)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 9)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 10)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 11)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 12)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 13)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 14)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 15)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 16)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 17)
+plotSite(tagMepprSamples_aligned_ins_list[[2]], 18)
+```
+
+
+**Conclusion:** 
+Tagmeppr finds 25 sites for clone 5 and 18 sites for clone 9 to be significant sites. We confirmed the presence of 21 barcodes in the clone but 2 of them seem to doule map, and theirfore are not completely trustable. That on top of the correct indel data and mappability of the barcode ended up with 19 sites that are robustly mappable and from which we can interpred the indel data correctly. 
