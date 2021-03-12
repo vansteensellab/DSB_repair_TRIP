@@ -52,16 +52,15 @@ library(stringr)
 library(report)
 
 ## Select outdir
-# out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
-# dir.create(out.dir)
+out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
+dir.create(out.dir, showWarnings = FALSE)
 
 
-in.dir.date = 20210202
+in.dir.date = 20210311
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
-out.dir = in.dir
-
-dir.create(out.dir, showWarnings = FALSE)
+# # out.dir = in.dir
+# dir.create(out.dir, showWarnings = FALSE)
 ```
 
 ### Custom functions
@@ -239,7 +238,8 @@ chip_domains.dt[, pool := NULL]
 
 # Merge on barcode (cell line is not required - however not that the chromatin data is not accurate for the KO cell lines)
 trip_tib = left_join(tib_RSTP2_2000_mutations, chip_domains.dt, by = c("barcode")) %>% 
-  as_tibble()
+  as_tibble() %>% 
+  distinct(exp_pool, mutation, barcode, .keep_all = TRUE) # remove any duplications that might have occured with the merge, while keeping all the columns.
 trip_tib <- trip_tib[!is.na(trip_tib$exp), ] # remove NAs if applicable
 ```
 

@@ -86,7 +86,7 @@ library(tibble)
 out.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", Date, "/")
 dir.create(out.dir)
 
-in.dir.date = 20210202
+in.dir.date = 20210311
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 ``` 
 
@@ -106,10 +106,8 @@ MeanExperiments <- function(mutdt) {
                 by=c("barcode", "mutation")]
   
   reads = mutdt[, 
-                list(cells = mean(cells), # The average number of theoretical cells. 
-                     cells_tot = sum(cells, na.rm = TRUE), # The total number of theoretical cells.
-                     sum_bc_reads = sum(sum_bc_reads, na.rm = TRUE), # The total barcode reads.
-                     mean_bc_reads = mean(sum_bc_reads), # The average barcode reads. 
+                list(cells = max(cells), # The average number of theoretical cells. 
+                     sum_bc_reads = max(sum_bc_reads, na.rm = TRUE), # The total barcode reads.
                      nexp = length(unique(exp))), # The amount of replicates this barcode was found in for this mean experiment.
                 by=c("barcode")]
   
@@ -512,8 +510,8 @@ meanmetadata = unique(meanmetadata)
 
 # colnames(mean.mutations.dt)
 
-sep.mutations.dt = map.meta.mutations.dt[, c("group", "cells_tot", "mean_bc_reads", "sd_norm", "sd_freq", "sd_ratio_indels", "nexp") :=
-                                           list(NULL, NA, NA, NA, NA, NA, 1)]
+sep.mutations.dt = map.meta.mutations.dt[, c("group", "sd_norm", "sd_freq", "sd_ratio_indels", "nexp") :=
+                                           list(NULL, NA, NA, NA, 1)]
 
 # add metadata to mean mutations.
 mean.mutations.dt = mean.mutations.dt[meanmetadata, on = "group"]
@@ -525,7 +523,7 @@ setnames(mean.mutations.dt, old = "group", new = "exp")
 ## Experiment specific means
 ```{r experiment specific controls}
 ## GSK DMSO experiments
-gsk.mutations.dt = map.meta.mutations.dt[replicate %in% c("LBR2GSKBIXRep1", "LBR2GSKBIXRep2") & drug == "DMSO", ]
+gsk.mutations.dt = map.meta.mutations.dt[replicate %in% c("LBR2GSKBIXRep1", "LBR2GSKBIXRep2") & drug == "DMSO" & plasmid == "LBR2", ]
 
 gsk.mutations.dt[, group := paste("mean", 
                                   cell_line, 
@@ -549,37 +547,87 @@ mean.bixgsk.dt[, group := gsub("_DMSO_", "_DMSOGSK_", group)]
 
 setnames(mean.bixgsk.dt, old = "group", new = "exp")
 
-## GSK DMSO experiments on clone 5
-gsk.mutations.c5.dt = map.meta.mutations.dt[replicate %in% c("Clone5GSKBIXRep1", "Clone5GSKBIXRep2", "Clone5GSKBIXRep3") & drug == "DMSO", ]
+# ## GSK DMSO experiments on clone 5
+# gsk.mutations.c5.dt = map.meta.mutations.dt[replicate %in% c("Clone5GSKBIXRep1", "Clone5GSKBIXRep2", "Clone5GSKBIXRep3") & drug == "DMSO" & plasmid == "LBR2", ]
+# 
+# gsk.mutations.c5.dt[, group := paste("mean", 
+#                                      cell_line, 
+#                                      plasmid, 
+#                                      drug, 
+#                                      ssODN, 
+#                                      siRNA, 
+#                                      time, 
+#                                      sep = "_")
+# ]
+# 
+# mean.bixgsk.c5.dt = gsk.mutations.c5.dt[,MeanExperiments(.SD), by=c("group")]
+# mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[nexp > 1]
+# 
+# # add metadata to mean mutations.
+# mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[meanmetadata, on = "group"]
+# 
+# mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[barcode != "<NA>"]
+# mean.bixgsk.c5.dt[, drug := "DMSO_GSK"]
+# mean.bixgsk.c5.dt[, group := gsub("_DMSO_", "_DMSOGSK_", group)]
+# 
+# setnames(mean.bixgsk.c5.dt, old = "group", new = "exp")
 
-gsk.mutations.c5.dt[, group := paste("mean", 
-                                     cell_line, 
-                                     plasmid, 
-                                     drug, 
-                                     ssODN, 
-                                     siRNA, 
-                                     time, 
-                                     sep = "_")
+## GSK DMSO experiments
+M3814.mutations.dt = map.meta.mutations.dt[replicate %in% c("LBR2M3814Rep1", "LBR2M3814Rep2") & drug == "DMSO" & plasmid == "LBR2", ]
+
+M3814.mutations.dt[, group := paste("mean", 
+                                  cell_line, 
+                                  plasmid, 
+                                  drug, 
+                                  ssODN, 
+                                  siRNA, 
+                                  time, 
+                                  sep = "_")
 ]
 
-mean.bixgsk.c5.dt = gsk.mutations.c5.dt[,MeanExperiments(.SD), by=c("group")]
-mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[nexp > 1]
+mean.M3814.dt = M3814.mutations.dt[,MeanExperiments(.SD), by=c("group")]
+mean.M3814.dt = mean.M3814.dt[nexp > 1]
 
 # add metadata to mean mutations.
-mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[meanmetadata, on = "group"]
+mean.M3814.dt = mean.M3814.dt[meanmetadata, on = "group"]
 
-mean.bixgsk.c5.dt = mean.bixgsk.c5.dt[barcode != "<NA>"]
-mean.bixgsk.c5.dt[, drug := "DMSO_GSK"]
-mean.bixgsk.c5.dt[, group := gsub("_DMSO_", "_DMSOGSK_", group)]
+mean.M3814.dt = mean.M3814.dt[barcode != "<NA>"]
+mean.M3814.dt[, drug := "DMSO_M3814"]
+mean.M3814.dt[, group := gsub("_DMSO_", "_DMSOM3814_", group)]
 
-setnames(mean.bixgsk.c5.dt, old = "group", new = "exp")
+setnames(mean.M3814.dt, old = "group", new = "exp")
+
+## NU7441 DMSO experiments
+NU7441.mutations.dt = map.meta.mutations.dt[replicate %in% c("LBR2ssODNRep1", "LBR2ssODNRep2", "LBR2ssODNRep3", "LBR2NU7441Rep1") & drug == "DMSO" & ssODN == "-" & plasmid == "LBR2", ]
+
+NU7441.mutations.dt[, group := paste("mean", 
+                                  cell_line, 
+                                  plasmid, 
+                                  drug, 
+                                  ssODN, 
+                                  siRNA, 
+                                  time, 
+                                  sep = "_")
+]
+
+mean.NU7441.dt = NU7441.mutations.dt[,MeanExperiments(.SD), by=c("group")]
+mean.NU7441.dt = mean.NU7441.dt[nexp > 1]
+
+# add metadata to mean mutations.
+mean.NU7441.dt = mean.NU7441.dt[meanmetadata, on = "group"]
+
+mean.NU7441.dt = mean.NU7441.dt[barcode != "<NA>"]
+mean.NU7441.dt[, drug := "DMSO_NU7441"]
+mean.NU7441.dt[, group := gsub("_DMSO_", "_DMSONU7441_", group)]
+
+setnames(mean.NU7441.dt, old = "group", new = "exp")
 ```
 
 ## Merge means with singe experiments
 
 ```{r merging all data}
 # Merge both single and mean data tables
-all.mutations.dt <- do.call(rbind, list(sep.mutations.dt, mean.mutations.dt, mean.bixgsk.dt, mean.bixgsk.c5.dt))
+all.mutations.dt <- do.call(rbind, list(sep.mutations.dt, mean.mutations.dt, mean.bixgsk.dt, mean.M3814.dt, mean.NU7441.dt))
 ```
 
 # Calculating frequencies and ratios 
@@ -604,8 +652,8 @@ all.mutations.dt[, "barcode" := gsub(".clone5|.clones[AB]", ".B", barcode, perl 
 setcolorder(all.mutations.dt, c("exp", "exp_pool", "barcode", "nexp", "no", "exp_ID",
                                 "replicate", "cell_line", "pool", "plasmid", "time", "drug",
                                 "ssODN", "siRNA", "GCF","seq_barcode","seq_index", 
-                                "sum_reads", "mean_bc_reads", "sum_bc_reads",
-                                "cells", "cells_tot", "mutation", "count", "norm",
+                                "sum_reads", "sum_bc_reads",
+                                "cells", "mutation", "count", "norm",
                                 "sd_norm", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq"))
 ```
 
@@ -659,8 +707,8 @@ large.indels.dt[mutation %in% c(">2", "<-14"), color := "other"]
 setcolorder(large.indels.dt,c("exp", "exp_pool", "barcode", "nexp", "no", "exp_ID",
                               "replicate", "cell_line", "pool", "plasmid", "time", "drug",
                               "ssODN", "siRNA", "GCF","seq_barcode","seq_index", 
-                              "sum_reads", "mean_bc_reads", "sum_bc_reads",
-                              "cells", "cells_tot", "mutation", "count", "norm",
+                              "sum_reads", "sum_bc_reads",
+                              "cells", "mutation", "count", "norm",
                               "sd_norm", "ratio_indels", "sd_ratio_indels", "freq", "sd_freq"))
 all.mutations.sep.dt = copy(all.mutations.dt)
 dim(all.mutations.sep.dt)

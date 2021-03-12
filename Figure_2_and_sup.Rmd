@@ -54,7 +54,7 @@ library(broom)
 library(report)
 
 
-in.dir.date = 20210202
+in.dir.date = 20210311
 in.dir = paste0("/DATA/projects/DSBrepair/data/R/rs", in.dir.date, "/")
 
 
@@ -178,33 +178,8 @@ table(mutationintegrations$pool)
 *(a)* Chromosome maps of the mapped IPR locations of both pools that passed the mutagenesis assay cutoff. 
 
 ## Panel 2B
-```{r Fig2B indel spectra, fig.height=6, fig.width=10}
-# pdf(filename, width = 11, height = 5, useDingbats = F)
-ggplot(filter(trip_tib_mut, drug == "-", mutation != "ssODN", nexp > 1),
-       aes(mutation, freq, color = color)) +
-  geom_quasirandom() +
-  theme_bw(base_size = 18) +
-  ylim(0, 1) +
-  theme(legend.position = c(0.1, 0.8)) +
-  scale_color_manual("legend", values = colore)  +
-  scale_y_continuous(name="frequency") +
-  scale_x_discrete(name="indel size")
-
-filter(trip_tib_mut, drug == "DMSO", mutation != "ssODN") %>% distinct(barcode, nexp) %>% pull(nexp) %>% table()
-filter(trip_tib_mut, drug == "DMSO", mutation != "ssODN") %>%  distinct(barcode, nexp) %>% dim()
-
-filter(trip_tib_mut, drug == "-", mutation != "ssODN") %>%  distinct(barcode, nexp) %>% pull(nexp) %>% table()
-filter(trip_tib_mut, drug == "-", mutation != "ssODN") %>%  distinct(barcode, nexp) %>% dim()
-```
-
-### Figure legend 
-
-*(b)* Indel frequency for each mutation for all the barcode from (*a*). Gray = wildtype sequence, red = non homologous end-joining, blue = microhomology-mediated end-joining, black = other indels.
-
-
-## Panel 2C
-```{r Fig2C individual barcodes, fig.height=5, fig.width=7}
-set.seed(1)
+```{r Fig2B individual barcodes, fig.height=5, fig.width=7}
+set.seed(7)
 
 barcodes <- trip_tib_mut %>% filter(drug == "-", nexp > 4, cells > 1000) %>% pull(barcode) %>% unique()
 barcodeset <- sample(barcodes, 6)
@@ -237,7 +212,7 @@ p <- ggplot(bc_mut_tib,
   scale_fill_manual("legend", values = colores) + 
   theme_bw() +
   scale_y_continuous(name="frequency") +
-  scale_x_discrete(name="indel size", breaks = c("<-15", -7, 0, 1, ">3")) +
+  scale_x_discrete(name="indel size", breaks = c("<-14", -7, 0, 1, ">2")) +
   geom_errorbar(aes(ymin=freq-sd_freq, ymax=freq+sd_freq), width=.2,
                 position=position_dodge(.9)) 
 p + facet_wrap( ~ label, ncol = 3, labeller = labeller(label = loc_labels)) +
@@ -246,7 +221,34 @@ p + facet_wrap( ~ label, ncol = 3, labeller = labeller(label = loc_labels)) +
 ```
 ### Figure Legend
 
-*(c)* Indel frequency of 6 randomly selected barcodes from (*b*), same color coding as in (*b*).  Ratio represents the ratio of +1 / -7 indel frequency. 
+*(c)* Indel frequency of 6 randomly selected barcodes from (*b*), same color coding as in (*b*).  Ratio represents the ratio of +1 / -7 indel frequency.
+
+## Panel 2C
+```{r Fig2C indel spectra, fig.height=6, fig.width=10}
+# pdf(filename, width = 11, height = 5, useDingbats = F)
+ggplot(filter(trip_tib_mut, drug == "-", mutation != "ssODN", nexp > 1),
+       aes(mutation, freq, color = color)) +
+  geom_quasirandom() +
+  theme_bw(base_size = 18) +
+  ylim(0, 1) +
+  theme(legend.position = c(0.1, 0.8)) +
+  scale_color_manual("legend", values = colore)  +
+  scale_y_continuous(name="frequency") +
+  scale_x_discrete(name="indel size")
+
+filter(trip_tib_mut, drug == "DMSO", mutation != "ssODN") %>% distinct(barcode, nexp) %>% pull(nexp) %>% table()
+filter(trip_tib_mut, drug == "DMSO", mutation != "ssODN") %>%  distinct(barcode, nexp) %>% dim()
+
+filter(trip_tib_mut, drug == "-", mutation != "ssODN") %>%  distinct(barcode, nexp) %>% pull(nexp) %>% table()
+filter(trip_tib_mut, drug == "-", mutation != "ssODN") %>%  distinct(barcode, nexp) %>% dim()
+```
+
+### Figure legend 
+
+*(b)* Indel frequency for each mutation for all the barcode from (*a*). Gray = wildtype sequence, red = non homologous end-joining, blue = microhomology-mediated end-joining, black = other indels.
+
+
+ 
 
 # Supplementary Figure 1
 
@@ -425,7 +427,7 @@ filter(trip_tib_mut, drug == "-", mutation != "ssODN") %>%
 ## Panel S2A
 ```{r FigS2A difference per indel with NU7441 and DMSO, fig.height=6, fig.width=4}
 barcodes_DMSO <- trip_tib_mut_all %>% 
-  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSO_64") %>%
+  filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSONU7441_64") %>%
   pull(barcode) %>% 
   unique
 barcodes_NU7441 <- trip_tib_mut_all %>% 
@@ -439,17 +441,17 @@ barcode_NU7441 <- Reduce(intersect, list(barcodes_DMSO,
   unique()
 
 trip_tib_mut_filt <- trip_tib_mut_all %>% 
-  filter(barcode %in% barcode_NU7441) %>% 
-  filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64", 
+  filter(barcode %in% barcode_NU7441 & 
+           exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSONU7441_64", 
                          "mean_RSTP2_2000_LBR2_NU7441_64"))
 
 trip_mut_lbr2_NU7441_diff <- trip_tib_mut_filt  %>%
   dplyr::select("barcode", "mutation", "freq", "exp_pool", "color") %>%
   spread(exp_pool, freq) %>%
   filter(!is.na(mean_RSTP2_2000_LBR2_NU7441_64), 
-         !is.na(mean_RSTP2_2000_LBR2_DMSO_64)) %>%
+         !is.na(mean_RSTP2_2000_LBR2_DMSONU7441_64)) %>%
   gather(mean_RSTP2_2000_LBR2_NU7441_64, 
-         mean_RSTP2_2000_LBR2_DMSO_64, 
+         mean_RSTP2_2000_LBR2_DMSONU7441_64, 
          key = "exp_pool", value = "freq") %>%
   mutate(mutation = as.character(mutation)) %>%
   dplyr::select(-barcode, -color) %>% 
@@ -462,16 +464,26 @@ mutations <- trip_mut_lbr2_NU7441_diff %>%
   pull(mutation)
 
 trip_mut_lbr2_NU7441_diff %>% filter(mutation %in% mutations) %>%
-  do(broom::tidy(t.test(freq ~ exp_pool, data = .))) %>%
+  do(broom::tidy(t.test(freq ~ exp_pool, data = ., paired = TRUE))) %>%
   ungroup() %>%
   mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
   dplyr::select(mutation, p.value, p.adj) %>%
   arrange(p.adj)
 
+barcodes_nu7441_paired = trip_tib_mut_all %>%
+  filter(mutation %in% c("-7", "1") &
+           exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSONU7441_64",
+                           "mean_RSTP2_2000_LBR2_NU7441_64")) %>%
+  group_by(barcode) %>%
+  dplyr::summarise(count = n()) %>% # count the occurence of the barcode, 
+  filter(count == 4) %>% # Filter for barcodes present 4x to have all combinations
+  pull(barcode)
+
 trip_tib_mut_filt <- trip_tib_mut_all %>%
   filter(mutation %in% c("-7", "1") &
-           exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64",
-                           "mean_RSTP2_2000_LBR2_NU7441_64")) %>%
+           exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSONU7441_64",
+                           "mean_RSTP2_2000_LBR2_NU7441_64") &
+           barcode %in% barcodes_nu7441_paired) %>%
   group_by(mutation, drug)
 
 ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
@@ -479,24 +491,27 @@ ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
   theme_bw(base_size = 16) +
   ylim(0,1) +
   theme(legend.position = c(0.3, .8)) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
+  scale_color_manual(values = c("DMSO_NU7441" = "black", "NU7441" = "gray")) + 
+  stat_compare_means(method = "t.test", paired = TRUE)
 
+  
 trip_tib_mut_filt %>% dplyr::summarise(mean = mean(freq))
+trip_tib_mut_filt %>% ungroup() %>% distinct(nexp, drug)
+
+# number of IPRs in plot
+trip_tib_mut_filt %>% pull(barcode) %>% unique() %>% length()
 ```
 ### Figure legend
-*(a)* Frequency of +1 and -7 indels for all the barcodes in the pools with DMSO control (black, mean of n = 6) or the DNAPKcs inhibitor NU7441 (1uM, gray, mean of n = 5). **** = adjusted p. value < 0.0001. 
+*(a)* Frequency of +1 and -7 indels for all the barcodes in the pools with DMSO control (black, mean of n = 8) or the DNAPKcs inhibitor NU7441 (1uM, gray, mean of n = 4). **** = adjusted p. value < 0.0001. 
 
 ## Panel S2B
 ```{r FigS2B NU7441 in the pool, fig.height=6, fig.width=3}
 # DMSO samples
 LBR2.DMSO.64h.samples <- trip_tib_mut_all %>% 
   filter(plasmid == "LBR2",
+         replicate %in% c("LBR2ssODNRep1", "LBR2ssODNRep2", "LBR2ssODNRep3", "LBR2NU7441Rep1"),
          drug == "DMSO",
-         ssODN == "-",
-         siRNA == "-",
-         replicate != "mean",
-         time == 64,
-         cell_line == "RSTP2_2000") %>%
+         ssODN == "-") %>%
   pull(exp_pool) %>% 
   unique()
 
@@ -535,7 +550,7 @@ p.values.NU7441.mutations <- trip_mut_lbr2_NU7441_diff  %>%
   dplyr::select(-exp_pool) %>%  # Remove exp_pool so it doesn't interfere.
   group_by(mutation, barcode, drug) %>% # I want to know how many times each mutation was picked up per barcode per condition
   dplyr::summarise(count = n()) %>% # Summary to count this
-  filter(drug == "NU7441" & count > 3 | drug == "DMSO" & count > 5) %>% # Select the barcodes that are present in all replicates.
+  filter(drug == "NU7441" & count > 3 | drug == "DMSO" & count > 3) %>% # Select the barcodes that are present in all replicates.
   group_by(mutation, barcode) %>%
   dplyr::summarise(count = n()) %>%
   filter(count > 1) %>%
@@ -545,8 +560,9 @@ p.values.NU7441.mutations <- trip_mut_lbr2_NU7441_diff  %>%
   dplyr::select(-exp_pool) %>%
   do(broom::tidy(t.test(freq ~ drug, data = .))) %>%
   ungroup() %>%
-  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val.
+  mutate(p.adj = p.adjust(p.value, method = "fdr")) %>% # Calculate adjusted P.Val. for all the barcodes.
   arrange(p.adj)
+
 
 p.values.NU7441.mutations %>%
   group_by(mutation) %>%
@@ -562,41 +578,44 @@ trip_tib_mut_filt <- trip_tib_mut_all %>%
            mutation %in% c("-7", "1"),
          cell_line == "RSTP2_2000") %>%
   group_by(mutation, exp_pool, drug) %>%
-  dplyr::summarise(freq = median(freq))
+  dplyr::summarise(freq = median(freq)) # Median frequency
 
 ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
   geom_quasirandom(dodge.width=1) +
   theme_bw(base_size = 16) +
   ylim(0,1) +
   theme(legend.position = c(0.3, .8)) +
-  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray"))
+  scale_color_manual(values = c("DMSO" = "black", "NU7441" = "gray")) + 
+  stat_compare_means(method = "t.test", paired = TRUE)
+
+trip_mut_lbr2_NU7441_diff %>% group_by(drug) %>% distinct(barcode, drug) %>% dplyr::summarise(count = n())
 ```
 
 ### Figure legend 
-*(b)* Frequency of +1 and -7 indels for the median of all the barcodes in the pools in each replicate with DMSO control (black, n = 6) or the DNAPKcs inhibitor NU7441 (1uM, gray, n = 5). * = adjusted p. value < 0.05, ** = adjusted p. value < 0.01. 
+*(b)* Frequency of +1 and -7 indels for the median of all the barcodes in the pools in each replicate with DMSO control (black, n = 2-4) or the DNAPKcs inhibitor NU7441 (1uM, gray, n = 2-4) - 1359 IPRs  * = adjusted p. value < 0.05, ** = adjusted p. value < 0.01. 
 
 
 ## Panel S2C
 
 ```{r FigS2C M3814 in the pool, fig.height=6, fig.width=4}
-barcodes_clone_DMSO <- trip_tib_mut_all %>% filter(exp_pool == "mean_") %>% pull(barcode) %>% unique
-barcodes_clone_M3814 <- trip_tib_mut_all %>% filter(exp_pool == "mean_RSTP2_2000_LBR2_M3814_64") %>% pull(barcode) %>% unique
+barcodes_DMSO <- trip_tib_mut_all %>% filter(exp_pool == "mean_RSTP2_2000_LBR2_DMSOM3814_64") %>% pull(barcode) %>% unique
+barcodes_M3814 <- trip_tib_mut_all %>% filter(exp_pool == "mean_RSTP2_2000_LBR2_M3814_64") %>% pull(barcode) %>% unique
 
-barcode_clone5 <- Reduce(intersect, list(barcodes_DMSO,
-                                         barcodes_NU7441)) %>% unique()
+barcode_intersect <- Reduce(intersect, list(barcodes_DMSO,
+                                         barcodes_M3814)) %>% unique()
 
 trip_tib_mut_filt <- trip_tib_mut_all %>% 
-  filter(barcode %in% barcode_clone5) %>% 
-  filter(exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSO_64", 
+  filter(barcode %in% barcode_intersect & 
+           exp_pool %in% c("mean_RSTP2_2000_LBR2_DMSOM3814_64", 
                          "mean_RSTP2_2000_LBR2_M3814_64"))
 
 trip_mut_lbr2_clone_M3814_diff <- trip_tib_mut_filt  %>%
   dplyr::select("barcode", "mutation", "freq", "exp_pool", "color") %>%
   spread(exp_pool, freq) %>%
   filter(!is.na(mean_RSTP2_2000_LBR2_M3814_64), 
-         !is.na(mean_RSTP2_2000_LBR2_DMSO_64)) %>%
+         !is.na(mean_RSTP2_2000_LBR2_DMSOM3814_64)) %>%
   gather(mean_RSTP2_2000_LBR2_M3814_64, 
-         mean_RSTP2_2000_LBR2_DMSO_64, 
+         mean_RSTP2_2000_LBR2_DMSOM3814_64, 
          key = "exp_pool", value = "freq") %>%
   mutate(mutation = as.character(mutation)) %>%
   dplyr::select(-barcode, -color) %>% 
@@ -610,31 +629,44 @@ mutations <- trip_mut_lbr2_clone_M3814_diff %>%
 
 trip_mut_lbr2_clone_M3814_diff %>% 
   filter(mutation %in% mutations) %>%
-  do(broom::tidy(t.test(freq ~ exp_pool, data = .))) %>%
+  do(broom::tidy(t.test(freq ~ exp_pool, data = ., paired = TRUE))) %>%
   ungroup() %>%
   mutate(p.adj = p.adjust(p.value, method = "fdr")) %>%
   dplyr::select(mutation, p.value, p.adj) %>%
   arrange(p.adj)
 
-trip_tib_mut_filt <- trip_tib_mut_all %>%
-  filter(mutation %in% c("-7", "1") &
-           exp_pool %in% c("mean_RSTP2_2000_LBR2_M3814_64",
-                           "mean_RSTP2_2000_LBR2_DMSO_64")) %>%
-  group_by(mutation, drug)
+barcodes_M3814_paired = trip_tib_mut_filt %>%
+  filter(mutation %in% c("-7", "1")) %>%
+  group_by(barcode) %>%
+  dplyr::summarise(count = n()) %>% # count the occurence of the barcode, 
+  filter(count == 4) %>% # Filter for barcodes present 4x to have all combinations
+  pull(barcode)
 
-trip_tib_mut_filt$drug <- factor(trip_tib_mut_filt$drug, levels = c("DMSO", "M3814"))
+trip_tib_mut_filt_1_7 <- trip_tib_mut_filt %>%
+  filter(mutation %in% c("-7", "1") & 
+           barcode %in% barcodes_M3814_paired) %>%
+  distinct(barcode, mutation, drug, freq) %>%
+  ungroup()
 
-ggplot(trip_tib_mut_filt, aes(mutation, freq, color = drug)) +
+trip_tib_mut_filt_1_7$drug <- factor(trip_tib_mut_filt_1_7$drug, levels = c("DMSO_M3814", "M3814"))
+
+ggplot(trip_tib_mut_filt_1_7, aes(mutation, freq, color = drug)) +
   geom_quasirandom(dodge.width=1) +
   theme_bw(base_size = 16) +
   ylim(0, 1) +
   theme(legend.position = c(0.3, .8)) +
-  scale_color_manual(values = c("DMSO" = "black", "M3814" = "gray"))
+  scale_color_manual(values = c("DMSO_M3814" = "black", "M3814" = "gray")) +
+  stat_compare_means(method = "t.test", paired = TRUE)
 
-trip_tib_mut_filt %>% dplyr::summarise(mean = mean(freq))
+# number of IPRs in plot
+trip_tib_mut_filt_1_7 %>% pull(barcode) %>% unique() %>% length()
+
+trip_tib_mut_filt %>% group_by(mutation, drug) %>% dplyr::summarise(mean = mean(freq))
+
+trip_tib_mut_filt %>% ungroup() %>% distinct(nexp, drug)
 ```
 ### Figure legend 
-*(b)* Frequency of +1 and -7 indels for each barcode in clone5 with DMSO control (black, n = 1) or the DNAPKcs inhibitor M3814 (1uM, gray, n = 1). **** = adjusted p. value < 0.0001. 
+*(b)* Frequency of +1 and -7 indels for each barcode in clone5 with DMSO control (black, same data as in A & B, n = 8) or the DNAPKcs inhibitor M3814 (1uM, gray, n = 2). **** = adjusted p. value < 0.0001. 
 
 
 
