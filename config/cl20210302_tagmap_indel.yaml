@@ -1,0 +1,75 @@
+outdir: '/DATA/projects/DSBrepair/data/cl20210302_tagmap_indel'
+indir: '/DATA/scratch/usr/c.leemans/data/forge/cl20201029_6196_Ruben_bcTagmap2'
+
+
+META_INFO: '/DATA/projects/DSBrepair/config/cl20201029_tagmap_indel2_meta_trip.txt'
+
+
+
+structure:
+  indelPCR: |
+    ID      5'      3'      type    req     second-read     pos   keep-bases
+    Tn5_constant      CGTCGGCAGCGTCAGATGTGTATAAGAGACAG  -  const   - False var -
+    pat1_rc  -  CGATCA{16}TTGTGGCCGGCCCTTGTGAC  const   -       False var -
+    pat1       GTCACAAGGGCCGGCCACAA{16}TGATCG   -       const_bar   present True   fixed   6
+    Tn5_constant_rc  -  CTGTCTCTTATACACATCTGACGCTGCCGACG  const   -       True var -
+
+lev_dist: 2
+
+min_count:
+    iPCR: 3
+    indelPCR: 0
+    bcPCR: 0
+
+celltype: K562
+
+bowtie:
+  index:  /DATA/data/human/hg38/index/bowtie2/hg38_1-22_XYM
+  options:
+      '1': ['--very-sensitive']
+      '2': ['--very-sensitive-local']
+max_dist:
+  '1': 500
+  '2': 20
+
+# crispr_target:
+#     wt: 'GTGGTAAGAGGTCGATGG'
+#     ssODN: 'GTGGTAAGAGATGTCGAT'
+# crispr_gap: 10
+# breaksite: 73
+
+
+
+sequence:
+    "TGATCGGTACCAACTCCAGCAGGACCATGTGATCGAAAATGCCAAGTAGGAAATTTGCCGATGGTGAAGTGGTAAGAGGTCGATGGCCTGGGAGTTCACTTT"
+
+
+crispr_info:
+    LBR2:
+        seq:
+            "TGATCGGTACCAACTCCAGCAGGACCATGTGATCGAAAATGCCAAGTAGGA\
+             AATTTGCCGATGGTGAAGTGGTAAGAGGTCGATGGCCTGGGAGTTCACTTT\
+             ATTATGAAGTAGAAATTAGATCGGAAGAGCACACGTCTGAACTCCAGTCAC"
+        cut_site: 73
+        pam_site: 76
+        target:
+            wt: 'GTGGTAAGAGGTCGATGG'
+            ssODN: 'GTGGTAAGAGATGTCGAT'
+        spacer_list: ['TGGCCT', 'GGAGTT', 'CACTTT', 'ATTATG', 'GAAGTA', 'ATTAGA',
+                      'GGAAGA', 'TCTGA', 'CTAGC', 'GTTGA', 'TCTAT', 'AAGTT',
+                      'AGAAC', 'TCGTA', 'AAGTC', 'TGACT', 'AGTGA', 'ACGCC',
+                      'AGCTC', 'TGCAC', 'GAAAG', 'TGCAT', 'ACGCA', 'GGGTT']
+        gap_list: [83, 90, 96, 102, 107, 116, 124, 137, 154, 165, 172, 199,
+                   215, 240, 260, 291, 321, 346, 358, 388, 415, 440, 456, 474]
+    default:
+        seq:
+            "TGATCGGTACCAACTCCAGCAGGACCATGTGATCGAAAATGCCAAGTAGGA\
+             AATTTGCCGATGGTGAAGTGGTAAGAGGTCGATGGCCTGGGAGTTCACTTT\
+             ATTATGAAGTAGAAATTAGATCGGAAGAGCACACGTCTGAACTCCAGTCAC"
+        cut_site: 73
+        pam_site: 76
+        target:
+            wt: 'GTGGTAAGAGGTCGATGG'
+            ssODN: 'GTGGTAAGAGATGTCGAT'
+        spacer_list: ['TGGCCT', 'GGAGTT', 'CACTTT', 'ATTATG', 'GAAGTA', 'ATTAGA', 'GGAAGA', 'TCTGA', 'CTAGC', 'GTTGA', 'TCTAT', 'AAGTT', 'AGAAC', 'TCGTA', 'AAGTC', 'TGACT', 'AGTGA', 'ACGCC', 'AGCTC', 'TGCAC', 'GAAAG', 'TGCAT', 'ACGCA', 'GGGTT']
+        gap_list: [83, 90, 96, 102, 107, 116, 124, 137, 154, 165, 172, 199, 215, 240, 260, 291, 321, 346, 358, 388, 415, 440, 456, 474]

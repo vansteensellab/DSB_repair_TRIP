@@ -1,0 +1,162 @@
+outdir:
+    '/DATA/projects/DSBrepair/data/tracks_20200914'
+
+
+site_summary:
+    20180918.RSTP2:
+        '/DATA/projects/DSBrepair/data/rs20190705_TRIP/rs20190711b_mappedintegrations.tsv'
+    clone_set:
+        '/DATA/projects/DSBrepair/data/cl20200622_mapped_barcodes_clones.tsv'
+
+
+
+site_binsize:
+    20180918.RSTP2: [2000]
+    clone_set: [2000, 5000, 10000, 20000]
+
+site_columns:
+    seqnames: 1
+    location: 2
+    ID: 3
+
+chip_dir:
+    '/DATA/usr/c.leemans/projects/chip_snake/'
+
+
+chip_config:
+    '/DATA/usr/c.leemans/projects/chip_snake/coverage_config_blank.yaml'
+chip_snake:
+    '/DATA/usr/c.leemans/projects/chip_snake/chip_coverage.snakemake'
+
+annotation:
+    DAM:
+        LMNB1:
+            experiment:
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r1_LMNB1-gatc
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r2_LMNB1-gatc
+            control:
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r1_Dam16-gatc
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r2_Dam10_1-gatc
+        4xAP3:
+            experiment:
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r1_4xAP3-gatc
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r2_4xAP3-gatc
+            control:
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r1_Dam256-gatc
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r2_Dam10_2-gatc
+        CENPB:
+            experiment:
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r2_CENPB-gatc
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r3_CENPB-gatc
+            control:
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r2_Dam100-gatc
+                - 3D_nucleus/results/ts180110_4DN_DataProcessing/results/counts/bin-gatc/K562_r3_Dam100-gatc
+        LMNB2-LMNA1:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA1_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA1_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA1_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA1_r2_Dam-gatc
+        LMNB2-LMNA2:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA2_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA2_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA2_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA2_r2_Dam-gatc
+        LMNB2-LMNA3:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA3_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA3_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA3_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA3_r2_Dam-gatc
+        LMNB2-LMNA4:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA4_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA4_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA4_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LMNA4_r2_Dam-gatc
+        LMNB2-LBR1:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR1_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR1_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR1_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR1_r2_Dam-gatc
+        LMNB2-LBR2:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR2_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR2_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR2_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR2_r2_Dam-gatc
+        LMNB2-LBR3:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR3_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR3_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR3_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR3_r2_Dam-gatc
+        LMNB2-LBR4:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR4_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR4_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR4_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_LBR4_r2_Dam-gatc
+        LMNB2-wt:
+            experiment:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_wt_r1_LMNB2-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_wt_r2_LMNB2-gatc
+            control:
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_wt_r1_Dam-gatc
+                - lamin_KO/ts200329_Ruben_clones_pADamID/results/counts/bin-gatc/pADamID-K562_RSTP2_5_wt_r2_Dam-gatc
+    coverage:
+        TSA_SON:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_TSA_SON_Suc_ori.hg38_10k.bigWig
+        TSA_LaminB:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_TSA_LaminB_Suc_ori.hg38_10k.bigWig
+        DNAse_PE:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_DNAse_PE36nt_ENCFF413AHU.bigWig
+        DNAse_SE:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_DNAse_SE36nt_ENCFF936BDN.bigWig
+        WGBS_r1:
+            /DATA/usr/c.leemans/data/tracks/hg38/WGBS_5mC_hg38_ENCSR765JPC_r1.bigWig
+        WGBS_r2:
+            /DATA/usr/c.leemans/data/tracks/hg38/WGBS_5mC_hg38_ENCSR765JPC_r2.bigWig
+        repliseq_r1_early:
+            /DATA/usr/c.leemans/data/tracks/hg38/repliseq_r1_early_K562_FIBIZK6EY.bw
+        repliseq_r2_early:
+            /DATA/usr/c.leemans/data/tracks/hg38/repliseq_r2_early_K562_FIRKOXCUW.bw
+        repliseq_r1_late:
+            /DATA/usr/c.leemans/data/tracks/hg38/repliseq_r1_late_K562_FI5TMO13R.bw
+        repliseq_r2_late:
+            /DATA/usr/c.leemans/data/tracks/hg38/repliseq_r2_late_K562_FIUCL6QG2.bw
+        TTseq_min_r1:
+            /DATA/usr/c.leemans/data/tracks/hg38/michel.cramer.2014.TTseq.K562.L.with.1.unique.fragment.coverage.track.minus.bw
+        TTseq_min_r2:
+            /DATA/usr/c.leemans/data/tracks/hg38/michel.cramer.2014.TTseq.K562.L.with.2.unique.fragment.coverage.track.minus.bw
+        TTseq_plus_r1:
+            /DATA/usr/c.leemans/data/tracks/hg38/michel.cramer.2014.TTseq.K562.L.with.1.unique.fragment.coverage.track.plus.bw
+        TTseq_plus_r2:
+            /DATA/usr/c.leemans/data/tracks/hg38/michel.cramer.2014.TTseq.K562.L.with.2.unique.fragment.coverage.track.plus.bw
+    nearest:
+        SPIN-100kb:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_SPIN_state_100kb_20191126.hg38.bed
+        SPIN-10state:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_SPIN_hg38_10state_20191127.bed
+        H3K9me2:
+            /DATA/usr/c.leemans/projects/chip_snake/hg38/hmm/K562/Salzberg2017/5kb/H3K9me2_ab1220.txt
+        H3K27me3:
+            /DATA/usr/c.leemans/projects/chip_snake/hg38/hmm/K562/Schmidl2015/5kb/H3K27me3_chipmentation.txt
+        repliseq:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_reptime_domains_cl200114.bed
+        LAD:
+            /DATA/usr/c.leemans/data/tracks/hg38/K562_LMNB1-5kb-combined_HMM.txt
+
+
+    chip: True
+dam_dir: /DATA/usr/t.v.schaik/proj
