@@ -1,0 +1,240 @@
+import getpass
+import datetime
+import inspect
+import os
+import re
+import yaml
+
+filename = inspect.getframeinfo(inspect.currentframe()).filename
+path = os.path.dirname(os.path.abspath(filename))
+
+
+
+if 'chip_config' in config:
+    with open(config['chip_config']) as c:
+        config.update(yaml.load(c))
+    include: config["chip_snake"]
+
+
+
+def get_annotation_input(config, outdir):
+    dam_regex = '%s/dam/%s-%i_%s.txt'
+    cov_regex = '%s/coverage/%s-%i_summary.tsv'
+    chip_regex = '%s/chip/site_means/%s-%i_%s_%s_%s.txt'
+    nearest_regex = '%s/nearest/%s_%s.txt'
+    for name in config['site_summary']:
+        if 'nearest' in config['annotation']:
+            for nearest in config['annotation']['nearest']:
+                yield(nearest_regex % (outdir, name, nearest))
+        for size in config['site_binsize'][name]:
+            if 'coverage' in config['annotation']:
+                yield(cov_regex % (outdir, name, size))
+            if 'DAM' in config['annotation']:
+                for dam_type in config['annotation']['DAM']:
+                    yield(dam_regex % (outdir, name, size, dam_type))
+            if config['annotation']['chip']:
+                for exp_list in iter_expirements(config, config['celltype']):
+                    ct, experiment, target, sample, info = exp_list
+                    yield(chip_regex % (outdir, name, size, experiment,
+                                        target, sample))
+
+def get_all_dam_input(config, outdir):
+    dam_regex = '%s/dam/%s-%i_%s.txt'
+    yield('%s/track/LMNB2-LMNA1-2kb.bw' % (outdir))
+    for name in config['site_summary']:
+        for size in config['site_binsize'][name]:
+            for dam_type in config['annotation']['DAM']:
+                yield(dam_regex % (outdir, name, size, dam_type))
+
+rule all:
+    input:
+        get_annotation_input(config, config['outdir'])
+
+rule dam_only:
+    input:
+        get_all_dam_input(config, config['outdir'])
+
+
+rule norm_track:
+    input:
+        counts = '{output}/bins/{name}-{bs}kb.txt',
+        sizes = config['chrom_sizes']['hg38']
+    output:
+        '{output}/track/{name}-{bs}kb.bw'
+    params:
+        bs=lambda wildcards: int(float(wildcards.bs) * 1000)
+    threads:
+        5
+    shell:
+        '{path}/normalize_track.R --input {input.counts}'
+        '                         --chrom_sizes {input.sizes}'
+        '                         --out {output}'
+        '                         --binsize {params.bs}'
+        '                         --threads {threads}'
+
+rule bin_track:
+    input:
+        '{output}/tracks/{name}_experiment_r1-gatc.bw',
+        '{output}/tracks/{name}_experiment_r2-gatc.bw',
+        '{output}/tracks/{name}_control_r1-gatc.bw',
+        '{output}/tracks/{name}_control_r2-gatc.bw'
+    output:
+        temp('{output}/bins/{name}-{bs}kb.npz'),
+        '{output}/bins/{name}-{bs}kb.txt'
+    params:
+        bs=lambda wildcards: int(float(wildcards.bs) * 1000),
+        label=['exp1', 'exp2', 'ctrl1', 'ctrl2']
+    threads:
+        10
+    shell:
+        "multiBigwigSummary bins --bwfiles {input}"
+        "                        --label {params.label}"
+        "                        -p {threads}"
+        "                        -bs {params.bs}"
+        "                        -out {output[0]}"
+        "                        --outRawCounts {output[1]}"
+
+def get_single_count(config, wildcards):
+    file_list = config['annotation']['DAM'][wildcards.name][wildcards.exp]
+    return('%s/%s.counts.txt.gz' % (config['dam_dir'],
+                                    file_list[int(wildcards.rep)-1]))
+
+
+rule build_track:
+    input:
+        counts = lambda wildcards: get_single_count(config, wildcards),
+        sizes = config['chrom_sizes']['hg38']
+    output:
+        bg = temp('{output}/tracks/{name}_{exp}_r{rep}.bg'),
+        bw = '{output}/tracks/{name}_{exp}_r{rep}-gatc.bw'
+    shell:
+        "awk -vOFS='\t' '{{"
+        "    if (FNR==NR) {{"
+        "       cs[$1]=$2"
+        "    }} else {{"
+        "        mid = ($2+$3)/2;"\
+        "        imid = int(mid);"
+        "        if (mid!=imid){{"
+        "            imid = imid + 1"
+        "        }}"
+        "        if (FNR==1){{"
+        "            printf \"%s\t0\t\", $1"
+        "        }} else if ($2==0) {{"
+        "            printf \"%.0f\t0\\n%s\t0\t\", end, $1"
+        "        }}"
+        "        printf \"%.0f\t0\\n%s\t%.0f\t%.0f\t%.0f\\n%s\t%.0f\t\","
+        "               imid-1, $1, imid - 1, imid, $4, $1, imid;"
+        "        end=cs[$1]"
+        "    }}"
+        "}} END {{"
+        "    printf \"%.0f\t0\\n\", end"
+        "}}' {input.sizes} <(zcat {input.counts}) | "
+        "    sort -k1,1 -k2,2n > {output.bg}; "
+        "bedGraphToBigWig {output.bg} {input.sizes} {output.bw}"
+
+rule nearest:
+    input:
+        summary=lambda wildcards: config['site_summary'][wildcards.name],
+        regions=lambda wildcards: config['annotation']['nearest'][wildcards.region]
+    output:
+        '{output}/nearest/{name}_{region}.txt'
+    shell:
+        "awk -vOFS='\t' '{{print $1, $2-1, $2, $3}}' {input.summary} |"
+        "    sort -k1,1 -k2n |"
+        "    bedtools closest -d -a - "
+        "                     -b <(sort -k1,1 -k2n {input.regions}) |"
+        "    awk -vOFS='\t' '{{print $4, $8, $NF}}' > {output}"
+
+def get_dam_input(config, wildcards, suffix):
+    dam_dict = config['annotation']["DAM"][wildcards.experiment]
+    for exp in dam_dict['experiment']:
+        yield('%s/%s.%s' % (config['dam_dir'], exp, suffix))
+    for dam in dam_dict['control']:
+        yield('%s/%s.%s' % (config['dam_dir'], dam, suffix))
+
+
+def get_track(config, wildcards):
+    bed_split = wildcards.bed.split('-')
+    if bed_split[-1].isdigit():
+        bs = int(bed_split[-1])
+    else:
+        bs = config['binsize']
+    return('{outdir}/track/{experiment}-{kb}kb.bw'.format(kb=int(bs/1000),
+                                                          **wildcards))
+
+rule dam_means:
+    input:
+        bed=lambda wildcards: get_mean_bed(config, wildcards),
+        counts=lambda wildcards: get_dam_input(config, wildcards, 'counts.txt.gz'),
+        bw=lambda wildcards: get_track(config, wildcards)
+    output:
+        '{outdir}/dam/{bed}_{experiment}.txt'
+    params:
+        window=lambda wildcards: wildcards.bed.split('-')[-1]
+    threads:
+        5
+    run:
+        input_counts = ','.join(input.counts)
+        shell("{path}/compute_dam_region.R --window {params.window} "
+              "                            --bed {input.bed}"
+              "                            --bw {input.bw}"
+              "                            --counts {input_counts}"
+              "                            --out {output}"
+              "                            --threads {threads}")
+
+
+
+
+def get_coverage_bw(config):
+    cov_dict = config['annotation']['coverage']
+    for key in cov_dict:
+        yield(cov_dict[key])
+
+def get_coverage_key(config):
+    cov_dict = config['annotation']['coverage']
+    for key in cov_dict:
+        yield(key)
+
+rule mean_coverage:
+    input:
+        bed=lambda wildcards: get_mean_bed(config, wildcards),
+        bw=get_coverage_bw(config)
+    output:
+        npz=temp('{outdir}/coverage/{bed}_summary.npz'),
+        txt='{outdir}/coverage/{bed}_summary.txt'
+    params:
+        labels=' '.join(get_coverage_key(config))
+    threads:
+        5
+    shell:
+        "multiBigwigSummary BED-file --BED {input.bed}"
+        "                            -b {input.bw}"
+        "                            -p {threads}"
+        "                            --labels {params.labels}"
+        "                            --outRawCounts {output.txt}"
+        "                            -out {output.npz}"
+
+
+
+rule barcode_coverage:
+    input:
+        txt='{outdir}/coverage/{bed}_summary.txt',
+        bed=lambda wildcards: get_mean_bed(config, wildcards),
+    output:
+        '{outdir}/coverage/{bed}_summary.tsv'
+    params:
+        n=len(config['annotation']['coverage'])
+    threads:
+        5
+    run:
+        head_col = ', '.join(['$%i' % (i + 4) for i in range(0, params.n)])
+        head_cmd = ("head -n1 {input.txt} | sed \"s/'//g\" | "
+                    "awk -vOFS='\t' '{{print \"barcode\", %s}}' > {output}") % (head_col)
+
+        line_col = ', '.join(['$%i' % (i + 8) for i in range(0, params.n)])
+        bed_cmd = ("bedtools intersect -f 1 -wb"
+                   "                   -a {input.bed}"
+                   "                   -b <(tail -n+1 {input.txt}) | "
+                   "sort -k4 | uniq | "
+                   "awk -vOFS='\t' '{{print $4, %s}}' >> {output}") % (line_col)
+        shell('; '.join((head_cmd, bed_cmd)))
